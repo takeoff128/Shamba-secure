@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shamba Secure</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="theme-color" content="#1c2a1a">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<div id="authScreen" class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand-row">
+      <div class="mark">&#128274;</div>
+      <div>
+        <h1>Shamba Secure</h1>
+        <div class="tagline">Your farm's money and livestock records, private to your farm.</div>
+      </div>
+    </div>
+
+    <div class="seg" id="authModeSeg">
+      <button type="button" class="on" data-val="login">Log in</button>
+      <button type="button" data-val="register">Start a new farm</button>
+    </div>
+
+    <div id="loginForm">
+      <label>Phone number</label>
+      <input type="text" id="loginPhone" placeholder="07XX XXX XXX">
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="Your password">
+      <div class="err" id="loginErr"></div>
+      <button class="btn" id="loginBtn">Log in</button>
+    </div>
+
+    <div id="registerForm" style="display:none">
+      <label>Farm name</label>
+      <input type="text" id="regFarmName" placeholder="e.g. Kamau Family Farm">
+      <label>Your name</label>
+      <input type="text" id="regName" placeholder="Full name">
+      <label>Currency</label>
+      <select id="regCurrency"></select>
+      <label>Phone number</label>
+      <input type="text" id="regPhone" placeholder="07XX XXX XXX">
+      <label>Password</label>
+      <input type="password" id="regPassword" placeholder="At least 6 characters">
+      <div class="err" id="regErr"></div>
+      <button class="btn" id="regBtn">Create farm account</button>
+    </div>
+  </div>
+</div>
+
+<div id="appScreen" style="display:none">
+  <header class="top">
+    <div class="brand">
+      <div class="mark small">&#128274;</div>
+      <div>
+        <h1 id="farmNameLabel">Shamba Secure</h1>
+        <div class="tagline" id="userLabel"></div>
+      </div>
+    </div>
+    <button class="btn secondary small" id="logoutBtn">Log out</button>
+  </header>
+
+  <div class="app">
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="dash">Overview</button>
+      <button class="tab-btn" data-tab="money">Finance</button>
+      <button class="tab-btn" data-tab="livestock">Livestock</button>
+      <button class="tab-btn" data-tab="broilers">Broilers</button>
+      <button class="tab-btn" data-tab="reminders">Reminders</button>
+      <button class="tab-btn" data-tab="team">Team</button>
+    </nav>
+
+    <!-- DASHBOARD -->
+    <section class="view active" id="dash">
+      <div class="card">
+        <h2>Where things stand</h2>
+        <div class="grid-3" id="dashStats"></div>
+      </div>
+      <div class="card">
+        <h2>Debt balance</h2>
+        <div class="grid-2">
+          <div class="stat"><div class="label">Owed to you</div><div class="value pos" id="dashOwedToMe">0</div></div>
+          <div class="stat"><div class="label">You owe</div><div class="value neg" id="dashIOwe">0</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Herd snapshot</h2>
+        <div class="grid-3" id="dashHerd"></div>
+      </div>
+    </section>
+
+    <!-- FINANCE -->
+    <section class="view" id="money">
+      <div class="card">
+        <h2>Add a transaction</h2>
+        <div class="seg" id="txTypeSeg">
+          <button type="button" class="on" data-val="income">Money in</button>
+          <button type="button" data-val="expense">Money out</button>
+        </div>
+        <label>Amount</label>
+        <input type="number" id="txAmount" min="0">
+        <label>What for</label>
+        <input type="text" id="txDesc" placeholder="e.g. Sold 3 bags of maize">
+        <div class="row">
+          <div>
+            <label>Category</label>
+            <select id="txCategory">
+              <option>Crop sales</option>
+              <option>Livestock sales</option>
+              <option>Milk / produce sales</option>
+              <option>Feed</option>
+              <option>Veterinary</option>
+              <option>Seeds & fertilizer</option>
+              <option>Labor</option>
+              <option>Equipment</option>
+              <option>Transport</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div>
+            <label>Date</label>
+            <input type="date" id="txDate">
+          </div>
+        </div>
+        <div class="err" id="txErr"></div>
+        <button class="btn" id="addTxBtn">Save transaction</button>
+      </div>
+
+      <div class="card">
+        <h2>Recent transactions</h2>
+        <div class="list" id="txList"></div>
+      </div>
+
+      <div class="card">
+        <h2>Add a debt</h2>
+        <div class="seg" id="debtTypeSeg">
+          <button type="button" class="on" data-val="owed_to_me">Someone owes me</button>
+          <button type="button" data-val="i_owe">I owe someone</button>
+        </div>
+        <label>Person's name</label>
+        <input type="text" id="debtPerson">
+        <label id="debtPhoneLabel">Their phone number (optional — lets us text them a reminder)</label>
+        <input type="text" id="debtPhone" placeholder="07XX XXX XXX">
+        <label>Amount</label>
+        <input type="number" id="debtAmount" min="0">
+        <label>Reason</label>
+        <input type="text" id="debtDesc">
+        <label>Due date (optional)</label>
+        <input type="date" id="debtDue">
+        <div class="err" id="debtErr"></div>
+        <button class="btn" id="addDebtBtn">Save debt</button>
+      </div>
+
+      <div class="card">
+        <h2>Debt ledger</h2>
+        <div class="list" id="debtList"></div>
+      </div>
+    </section>
+
+    <!-- LIVESTOCK -->
+    <section class="view" id="livestock">
+      <div class="card">
+        <h2>Add an animal</h2>
+        <div class="row">
+          <div>
+            <label>Tag / name</label>
+            <input type="text" id="anTag" placeholder="e.g. Cow 014">
+          </div>
+          <div>
+            <label>Species</label>
+            <select id="anSpecies">
+              <option>Cattle</option>
+              <option>Goat</option>
+              <option>Sheep</option>
+              <option>Poultry</option>
+              <option>Pig</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Breed</label>
+            <input type="text" id="anBreed" placeholder="Optional">
+          </div>
+          <div>
+            <label>Sex</label>
+            <select id="anSex">
+              <option value="">Unknown</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Date of birth</label>
+            <input type="date" id="anDob">
+          </div>
+          <div>
+            <label>Date acquired</label>
+            <input type="date" id="anAcquired">
+          </div>
+        </div>
+        <div class="err" id="anErr"></div>
+        <button class="btn" id="addAnimalBtn">Add animal</button>
+      </div>
+
+      <div class="card">
+        <h2>Your herd</h2>
+        <div id="animalList"><div class="empty">No animals added yet.</div></div>
+      </div>
+    </section>
+
+    <!-- BROILERS -->
+    <section class="view" id="broilers">
+      <div class="card">
+        <h2>Start a new lot</h2>
+        <p class="note">Starts the 28-day cycle and schedules every reminder below automatically \u2014 vaccination on day 7, finisher feed &amp; booster on day 21, market-ready on day 28.</p>
+        <label>Lot name / tag</label>
+        <input type="text" id="lotName" placeholder="e.g. Lot A - August batch">
+        <label>Number of birds</label>
+        <input type="number" id="lotQuantity" min="1" placeholder="e.g. 200">
+        <label>Start date (day chicks arrive)</label>
+        <input type="date" id="lotStartDate">
+        <div class="err" id="lotErr"></div>
+        <button class="btn" id="addLotBtn">Start lot &amp; schedule reminders</button>
+      </div>
+
+      <div class="card">
+        <h2>Default schedule</h2>
+        <div id="scheduleRef"></div>
+      </div>
+
+      <div class="card">
+        <h2>Your lots</h2>
+        <div id="lotList"><div class="empty">No lots started yet.</div></div>
+      </div>
+    </section>
+
+    <!-- REMINDERS -->
+    <section class="view" id="reminders">
+      <div class="card">
+        <h2>Add a reminder</h2>
+        <p class="note">Everyone on this farm gets an SMS on the date you pick. Debts with a due date already get one automatically.</p>
+        <label>Date</label>
+        <input type="date" id="remDate">
+        <label>Message</label>
+        <input type="text" id="remMessage" placeholder="e.g. Vaccinate the goats this week">
+        <div class="err" id="remErr"></div>
+        <button class="btn" id="addReminderBtn">Save reminder</button>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h2 style="margin:0">Upcoming &amp; sent</h2>
+          <button class="btn secondary small" id="runNowBtn">Send due ones now</button>
+        </div>
+        <div class="list" id="reminderList"></div>
+      </div>
+    </section>
+
+    <!-- TEAM -->
+    <section class="view" id="team">
+      <div class="card" id="farmSettingsCard">
+        <h2>Farm settings</h2>
+        <label>Currency</label>
+        <select id="farmCurrency"></select>
+        <div class="err" id="farmSettingsErr"></div>
+        <button class="btn secondary" id="saveFarmSettingsBtn">Save</button>
+      </div>
+      <div class="card" id="addWorkerCard">
+        <h2>Add someone to your farm</h2>
+        <p class="note">They'll log in with their own phone number and password, and see the same farm records as you.</p>
+        <label>Name</label>
+        <input type="text" id="wName">
+        <label>Phone number</label>
+        <input type="text" id="wPhone">
+        <label>Password</label>
+        <input type="password" id="wPassword" placeholder="At least 6 characters">
+        <div class="err" id="wErr"></div>
+        <button class="btn" id="addWorkerBtn">Add to farm</button>
+      </div>
+      <div class="card">
+        <h2>People on this farm</h2>
+        <div class="list" id="userList"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- Animal detail modal -->
+<div id="animalModal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modalAnimalTitle">Animal</h2>
+      <button class="del" id="closeModalBtn">Close</button>
+    </div>
+    <div id="modalAnimalMeta" class="note"></div>
+    <div class="row" style="margin-top:10px">
+      <div>
+        <label>Status</label>
+        <select id="modalStatus">
+          <option value="active">Active</option>
+          <option value="sold">Sold</option>
+          <option value="deceased">Deceased</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn secondary small" id="modalStatusBtn">Update status</button>
+      </div>
+    </div>
+
+    <h3 style="margin-top:18px">Remind me about this animal</h3>
+    <div class="row">
+      <div>
+        <label>Date</label>
+        <input type="date" id="modalRemDate">
+      </div>
+      <div>
+        <label>Message</label>
+        <input type="text" id="modalRemMessage" placeholder="e.g. Vet check-up due">
+      </div>
+    </div>
+    <div class="err" id="modalRemErr"></div>
+    <button class="btn secondary" id="modalRemBtn">Save reminder</button>
+
+    <h3 style="margin-top:18px">Add a record</h3>
+    <div class="row">
+      <div>
+        <label>Type</label>
+        <select id="evType">
+          <option value="health">Health / vet</option>
+          <option value="breeding">Breeding</option>
+          <option value="production">Production (milk/eggs)</option>
+          <option value="weight">Weight</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div>
+        <label>Date</label>
+        <input type="date" id="evDate">
+      </div>
+    </div>
+    <label>Details</label>
+    <input type="text" id="evDetail" placeholder="e.g. Dewormed, or served by AI">
+    <label>Value (optional, e.g. litres or kg)</label>
+    <input type="number" id="evValue">
+    <div class="err" id="evErr"></div>
+    <button class="btn" id="addEventBtn">Save record</button>
+
+    <h3 style="margin-top:18px">History</h3>
+    <div class="list" id="eventList"></div>
+  </div>
+</div>
+
+<!-- Broiler lot detail modal -->
+<div id="lotModal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modalLotTitle">Lot</h2>
+      <button class="del" id="closeLotModalBtn">Close</button>
+    </div>
+    <div id="modalLotMeta" class="note"></div>
+    <div class="row" style="margin-top:10px">
+      <div>
+        <label>Status</label>
+        <select id="modalLotStatus">
+          <option value="active">Active</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn secondary small" id="modalLotStatusBtn">Update status</button>
+      </div>
+    </div>
+
+    <h3 style="margin-top:18px">Add an extra reminder for this lot</h3>
+    <div class="row">
+      <div>
+        <label>Date</label>
+        <input type="date" id="lotRemDate">
+      </div>
+      <div>
+        <label>Message</label>
+        <input type="text" id="lotRemMessage" placeholder="e.g. Check litter moisture">
+      </div>
+    </div>
+    <div class="err" id="lotRemErr"></div>
+    <button class="btn secondary" id="lotRemBtn">Save reminder</button>
+
+    <h3 style="margin-top:18px">Full schedule for this lot</h3>
+    <div class="list" id="lotReminderList"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
