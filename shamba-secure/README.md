@@ -19,7 +19,10 @@ in with their own phone + password and see the same records.
 broiler lots, and reminders — but only the owner can delete or remove any
 of these. Marking a debt settled or updating an animal/lot's status is not
 a delete, so workers can still do that day-to-day upkeep. Only the owner
-can add new people to the farm or trigger an immediate reminder send.
+can add or remove people from the farm, or trigger an immediate reminder
+send. Removing someone from the Team tab takes effect immediately — their
+current session is checked against the database on every request, not
+just at login, so a removed worker can't keep using an old session.
 
 ## Running it locally (to try it out)
 
@@ -93,6 +96,13 @@ Open any lot to add **extra reminders on top** of the default schedule
 (e.g. "check litter moisture on day 10") — useful for anything specific to
 that batch. Reminders for a lot go to your farm's phones, the same way
 livestock and general reminders do.
+
+**Tracking losses:** open a lot and use "Record a loss" to log a date,
+how many birds were lost, and an optional note (e.g. "heat stress").
+The lot card and modal both show a running "X of Y birds remaining"
+count, so you always know your live flock size without doing the maths
+yourself. Like other records, workers can add a loss entry but only the
+owner can delete one.
 
 ## SMS reminders
 

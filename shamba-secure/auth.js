@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const db = require('./db');
 
 const SECRET = process.env.JWT_SECRET;
 if (!SECRET) {
@@ -30,7 +31,14 @@ function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Not logged in.' });
   try {
     const payload = jwt.verify(token, SECRET);
-    req.user = payload; // { userId, farmId, name, role }
+    // The JWT itself never expires early, so a removed user's old token would
+    // otherwise keep working for up to 30 days. Check they still exist.
+    const user = db.prepare('SELECT id, farm_id, role FROM users WHERE id = ?').get(payload.userId);
+    if (!user || user.farm_id !== payload.farmId) {
+      clearAuthCookie(res);
+      return res.status(401).json({ error: 'Your access has been removed. Please contact the farm owner.' });
+    }
+    req.user = { ...payload, role: user.role }; // role re-checked fresh in case it changed
     next();
   } catch (e) {
     return res.status(401).json({ error: 'Session expired. Log in again.' });

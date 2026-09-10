@@ -107,6 +107,16 @@ CREATE TABLE IF NOT EXISTS broiler_lots (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS broiler_mortality (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+  lot_id INTEGER NOT NULL REFERENCES broiler_lots(id) ON DELETE CASCADE,
+  event_date TEXT NOT NULL,
+  quantity_lost INTEGER NOT NULL,
+  note TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_tx_farm ON transactions(farm_id);
 CREATE INDEX IF NOT EXISTS idx_debts_farm ON debts(farm_id);
 CREATE INDEX IF NOT EXISTS idx_animals_farm ON animals(farm_id);
@@ -114,6 +124,7 @@ CREATE INDEX IF NOT EXISTS idx_events_animal ON animal_events(animal_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_farm ON reminders(farm_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(remind_date, sent_at);
 CREATE INDEX IF NOT EXISTS idx_broiler_lots_farm ON broiler_lots(farm_id);
+CREATE INDEX IF NOT EXISTS idx_broiler_mortality_lot ON broiler_mortality(lot_id);
 `);
 
 module.exports = db;

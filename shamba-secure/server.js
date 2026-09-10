@@ -68,6 +68,15 @@ app.get('/api/users', requireAuth, (req, res) => {
   res.json(users);
 });
 
+app.delete('/api/users/:id', requireAuth, requireOwner, (req, res) => {
+  const target = db.prepare('SELECT * FROM users WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
+  if (!target) return res.status(404).json({ error: 'Person not found.' });
+  if (target.role === 'owner') return res.status(400).json({ error: "Can't remove the farm owner." });
+
+  db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
+  res.json({ ok: true });
+});
+
 app.post('/api/login', (req, res) => {
   const { phone, password } = req.body || {};
   if (!phone || !password) return badRequest(res, 'Phone and password are required.');
@@ -240,7 +249,13 @@ app.get('/api/broiler-schedule', requireAuth, (req, res) => {
 });
 
 app.get('/api/broiler-lots', requireAuth, (req, res) => {
-  const rows = db.prepare('SELECT * FROM broiler_lots WHERE farm_id = ? ORDER BY id DESC').all(req.user.farmId);
+  const rows = db.prepare(`
+    SELECT bl.*,
+      COALESCE((SELECT SUM(quantity_lost) FROM broiler_mortality WHERE lot_id = bl.id), 0) AS total_lost
+    FROM broiler_lots bl
+    WHERE bl.farm_id = ?
+    ORDER BY bl.id DESC
+  `).all(req.user.farmId);
   res.json(rows);
 });
 
@@ -281,6 +296,37 @@ app.get('/api/broiler-lots/:id/reminders', requireAuth, (req, res) => {
     "SELECT * FROM reminders WHERE farm_id = ? AND subject_type = 'broiler_lot' AND subject_id = ? ORDER BY remind_date ASC, id ASC"
   ).all(req.user.farmId, req.params.id);
   res.json(rows);
+});
+
+// ---------------- BROILER MORTALITY ----------------
+
+app.get('/api/broiler-lots/:id/mortality', requireAuth, (req, res) => {
+  const rows = db.prepare(
+    'SELECT * FROM broiler_mortality WHERE farm_id = ? AND lot_id = ? ORDER BY event_date DESC, id DESC'
+  ).all(req.user.farmId, req.params.id);
+  res.json(rows);
+});
+
+app.post('/api/broiler-lots/:id/mortality', requireAuth, (req, res) => {
+  const lot = db.prepare('SELECT * FROM broiler_lots WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
+  if (!lot) return res.status(404).json({ error: 'Lot not found.' });
+
+  const { event_date, quantity_lost, note } = req.body || {};
+  const qty = parseInt(quantity_lost, 10);
+  if (!event_date) return badRequest(res, 'Pick a date.');
+  if (!qty || qty <= 0) return badRequest(res, 'Enter how many were lost.');
+
+  const info = db.prepare(
+    'INSERT INTO broiler_mortality (farm_id, lot_id, event_date, quantity_lost, note) VALUES (?,?,?,?,?)'
+  ).run(req.user.farmId, lot.id, event_date, qty, note || '');
+
+  res.json({ id: info.lastInsertRowid });
+});
+
+app.delete('/api/broiler-lots/:id/mortality/:mortId', requireAuth, requireOwner, (req, res) => {
+  db.prepare('DELETE FROM broiler_mortality WHERE id = ? AND farm_id = ? AND lot_id = ?')
+    .run(req.params.mortId, req.user.farmId, req.params.id);
+  res.json({ ok: true });
 });
 
 // ---------------- REMINDERS ----------------

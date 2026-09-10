@@ -365,13 +365,19 @@ function renderLots(){
     const dayNum = daysBetween(lot.start_date, todayStr());
     const next = state.schedule.find(s => s.day > dayNum);
     const dayLabel = dayNum < 0 ? 'Not started yet' : `Day ${dayNum} of ${lot.cycle_days}`;
+    const lost = lot.total_lost || 0;
+    const remaining = lot.quantity != null ? lot.quantity - lost : null;
+    const countLabel = remaining != null
+      ? `${remaining} of ${lot.quantity} birds remaining${lost > 0 ? ` (${lost} lost)` : ''}`
+      : (lost > 0 ? `${lost} lost` : '');
     return `
     <div class="animal-card" onclick="openLotModal(${lot.id})">
       <div class="top">
         <h3>${escapeHtml(lot.name)}</h3>
         <span class="pill ${lot.status==='active' ? 'active' : 'settled'}">${lot.status}</span>
       </div>
-      <div class="meta">${lot.quantity ? lot.quantity + ' birds \u00b7 ' : ''}started ${lot.start_date} \u00b7 ${dayLabel}</div>
+      <div class="meta">started ${lot.start_date} \u00b7 ${dayLabel}</div>
+      ${countLabel ? `<div class="meta" style="margin-top:2px;${lost>0?'color:var(--rust-600);font-weight:600;':''}">${countLabel}</div>` : ''}
       ${next && lot.status==='active' ? `<div class="meta" style="margin-top:4px;color:var(--gold-600);font-weight:600;">Next: Day ${next.day} \u2014 ${escapeHtml(next.title)}</div>` : ''}
       <div style="text-align:right;margin-top:6px;">
         ${removeBtn(`deleteLot(${lot.id}, event)`)}
@@ -390,13 +396,17 @@ async function deleteLot(id, evt){
 function openLotModal(id){
   state.currentLotId = id;
   const lot = state.lots.find(l=>l.id===id);
+  const lost = lot.total_lost || 0;
+  const remaining = lot.quantity != null ? lot.quantity - lost : null;
   document.getElementById('modalLotTitle').textContent = lot.name;
   document.getElementById('modalLotMeta').textContent =
-    [lot.quantity ? lot.quantity + ' birds' : null, 'started ' + lot.start_date].filter(Boolean).join(' \u00b7 ');
+    [remaining != null ? `${remaining} of ${lot.quantity} birds remaining` : null, 'started ' + lot.start_date].filter(Boolean).join(' \u00b7 ');
   document.getElementById('modalLotStatus').value = lot.status;
   document.getElementById('lotRemDate').value = todayStr();
+  document.getElementById('mortDate').value = todayStr();
   document.getElementById('lotModal').style.display = 'flex';
   loadLotReminders(id);
+  loadMortality(id);
 }
 function closeLotModal(){
   document.getElementById('lotModal').style.display = 'none';
@@ -420,6 +430,44 @@ async function loadLotReminders(lotId){
       <div><div class="name">${escapeHtml(r.message)}</div><div class="meta">${r.remind_date}</div></div>
       <span class="pill ${r.sent_at ? 'settled' : 'owe-me'}">${r.sent_at ? 'Sent' : 'Pending'}</span>
     </div>`).join('');
+}
+
+async function loadMortality(lotId){
+  const rows = await api('/broiler-lots/'+lotId+'/mortality');
+  const el = document.getElementById('mortalityList');
+  if (rows.length===0){ el.innerHTML = '<div class="empty">No losses recorded.</div>'; return; }
+  el.innerHTML = rows.map(m=>`
+    <div class="item">
+      <div><div class="name">${m.quantity_lost} lost</div><div class="meta">${m.event_date}${m.note ? ' \u00b7 '+escapeHtml(m.note) : ''}</div></div>
+      ${removeBtn(`deleteMortality(${lotId}, ${m.id})`)}
+    </div>`).join('');
+}
+
+document.getElementById('addMortBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('mortErr'); err.textContent = '';
+  const event_date = document.getElementById('mortDate').value || todayStr();
+  const quantity_lost = document.getElementById('mortQty').value;
+  const note = document.getElementById('mortNote').value.trim();
+  if (!quantity_lost || parseInt(quantity_lost,10) <= 0){ err.textContent = 'Enter how many were lost.'; return; }
+  try{
+    await api('/broiler-lots/'+state.currentLotId+'/mortality', { method:'POST', body:{ event_date, quantity_lost, note } });
+    document.getElementById('mortQty').value = '';
+    document.getElementById('mortNote').value = '';
+    showToast('Loss recorded');
+    await loadAll();
+    const lot = state.lots.find(l=>l.id===state.currentLotId);
+    const lost = lot.total_lost || 0;
+    const remaining = lot.quantity != null ? lot.quantity - lost : null;
+    document.getElementById('modalLotMeta').textContent =
+      [remaining != null ? `${remaining} of ${lot.quantity} birds remaining` : null, 'started ' + lot.start_date].filter(Boolean).join(' \u00b7 ');
+    loadMortality(state.currentLotId);
+  }catch(e){ err.textContent = e.message; }
+});
+
+async function deleteMortality(lotId, mortId){
+  await api('/broiler-lots/'+lotId+'/mortality/'+mortId, { method:'DELETE' });
+  await loadAll();
+  loadMortality(lotId);
 }
 
 document.getElementById('lotRemBtn').addEventListener('click', async ()=>{
@@ -584,6 +632,18 @@ function renderUsers(){
   el.innerHTML = state.users.map(u=>`
     <div class="item">
       <div><div class="name">${escapeHtml(u.name)}</div><div class="meta">${escapeHtml(u.phone)}</div></div>
-      <span class="pill ${u.role==='owner' ? 'owe-me' : 'settled'}">${u.role}</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="pill ${u.role==='owner' ? 'owe-me' : 'settled'}">${u.role}</span>
+        ${isOwner() && u.role !== 'owner' ? `<button class="del" onclick="removeUser(${u.id})">Remove</button>` : ''}
+      </div>
     </div>`).join('');
+}
+
+async function removeUser(id){
+  if (!confirm('Remove this person from the farm? They will no longer be able to log in.')) return;
+  try{
+    await api('/users/'+id, { method:'DELETE' });
+    showToast('Removed from the farm');
+    await loadAll();
+  }catch(e){ showToast(e.message); }
 }
