@@ -82,13 +82,13 @@ document.getElementById('forgotBtn').addEventListener('click', async ()=>{
 });
 
 document.getElementById('loginBtn').addEventListener('click', async ()=>{
-  const phone = document.getElementById('loginPhone').value.trim();
+  const identifier = document.getElementById('loginPhone').value.trim();
   const password = document.getElementById('loginPassword').value;
   const err = document.getElementById('loginErr');
   err.textContent = '';
-  if (!phone || !password){ err.textContent = 'Enter your phone and password.'; return; }
+  if (!identifier || !password){ err.textContent = 'Enter your phone or email, and your password.'; return; }
   try{
-    await api('/login', { method:'POST', body:{ phone, password } });
+    await api('/login', { method:'POST', body:{ identifier, password } });
     await enterApp();
   }catch(e){ err.textContent = e.message; }
 });

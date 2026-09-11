@@ -20,7 +20,9 @@ Then open http://localhost:3000 — register a farm and start using it.
 
 Each **farm** is its own account. The person who registers becomes the
 **owner** and can add **workers** (Team tab) who log in with their own
-phone + password.
+phone + password. Logging in accepts either the phone number or the
+email address on the account, whichever's easier to remember at the
+moment.
 
 **Worker permissions:** workers can add transactions, debts, animals,
 broiler lots, and reminders — but only the owner can delete or remove any

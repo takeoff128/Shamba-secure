@@ -86,12 +86,12 @@ app.delete('/api/users/:id', requireAuth, requireOwner, (req, res) => {
 });
 
 app.post('/api/login', (req, res) => {
-  const { phone, password } = req.body || {};
-  if (!phone || !password) return badRequest(res, 'Phone and password are required.');
+  const { identifier, password } = req.body || {};
+  if (!identifier || !password) return badRequest(res, 'Enter your phone or email, and your password.');
 
-  const user = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone);
+  const user = db.prepare('SELECT * FROM users WHERE phone = ? OR email = ?').get(identifier, identifier);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-    return res.status(401).json({ error: 'Incorrect phone number or password.' });
+    return res.status(401).json({ error: 'Incorrect phone/email or password.' });
   }
   const farm = db.prepare('SELECT * FROM farms WHERE id = ?').get(user.farm_id);
   setAuthCookie(res, { userId: user.id, farmId: user.farm_id, name: user.name, role: user.role });
