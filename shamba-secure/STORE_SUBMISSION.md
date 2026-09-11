@@ -1,7 +1,7 @@
 # Getting Shamba Secure onto the Play Store and App Store
 
 This is a separate project from running the app itself — read this fully
-before starting, since step 5 (iOS build) needs a Mac.
+before starting, since the iOS build step needs a Mac.
 
 ## What's already done for you
 
@@ -16,17 +16,15 @@ before starting, since step 5 (iOS build) needs a Mac.
 ## Step 0 — Deploy first
 
 Both wrapping tools below need a real public HTTPS URL. Deploy Shamba
-Secure to your HostAfrica server (see the main README's deployment
-section) before continuing. Confirm `https://yourdomain.com/privacy.html`
-loads correctly.
+Secure to a managed platform (see the main README) before continuing.
+Confirm `https://yourdomain.com/privacy.html` loads correctly.
 
 ## Step 1 — Create your developer accounts
 
 - **Google Play Console:** https://play.google.com/console/signup — $25
-  one-time fee, approval is usually fast.
+  one-time fee.
 - **Apple Developer Program:** https://developer.apple.com/programs —
-  $99/year, can take a day or two to verify (longer if registering as a
-  business rather than an individual).
+  $99/year.
 
 ## Step 2 — Wrap the app with Capacitor
 
@@ -42,9 +40,9 @@ npx cap add android
 npx cap add ios
 ```
 
-Since Shamba Secure is a server-rendered app (not a static site), point
-Capacitor's config at your live URL instead of bundling the files locally
-— edit `capacitor.config.json`:
+Since Shamba Secure is a server-rendered app, point Capacitor's config at
+your live URL instead of bundling files locally — edit
+`capacitor.config.json`:
 
 ```json
 {
@@ -60,13 +58,12 @@ Capacitor's config at your live URL instead of bundling the files locally
 
 ### Add at least one native feature (for Apple review)
 
-The easiest, most useful option here: **push notifications** for
-reminders, replacing or supplementing SMS. Capacitor has an official
-plugin (`@capacitor/push-notifications`) — this is a good follow-up
-project once the basic wrapping works, and meaningfully strengthens your
-App Store submission.
+The easiest option: **push notifications** for reminders, via
+`@capacitor/push-notifications`. Worth doing as a follow-up project once
+basic wrapping works — it meaningfully strengthens an App Store
+submission.
 
-## Step 3 — Android build (can be done on your Linux machine)
+## Step 3 — Android build (can be done on Linux/Windows)
 
 ```bash
 npx cap sync android
@@ -74,10 +71,9 @@ cd android
 ./gradlew bundleRelease
 ```
 
-This produces an `.aab` file — sign it (Android Studio or `jarsigner`
-walks you through generating a keystore the first time), then upload it
-in Play Console under your app's "Production" release track along with
-screenshots, description, and the privacy policy URL.
+Produces an `.aab` file — sign it, then upload in Play Console under
+"Production" along with screenshots, description, and the privacy policy
+URL.
 
 ## Step 4 — iOS build (needs a Mac)
 
@@ -86,26 +82,22 @@ npx cap sync ios
 npx cap open ios
 ```
 
-This opens the project in Xcode. From there: set your Apple Developer
-team, configure signing, and use Xcode's Archive → Distribute App flow to
-upload to App Store Connect. If you don't have a Mac, options include:
-borrowing one, a cloud Mac CI service (Codemagic, MacStadium, GitHub
-Actions macOS runners), or a Mac-rental service by the hour.
+Opens the project in Xcode. From there: configure signing, then use
+Archive → Distribute App to upload to App Store Connect. Without a Mac:
+borrow one, use a cloud Mac CI service (Codemagic, MacStadium, GitHub
+Actions macOS runners), or a Mac-rental-by-the-hour service.
 
 ## Step 5 — Store listing requirements (both platforms)
 
-- App icon (already generated), a handful of screenshots of the app in
-  use, a short description, and your privacy policy URL.
+- App icon, screenshots, short description, privacy policy URL.
 - **Google Play "Data safety" form** and **Apple "App Privacy" labels** —
-  both ask you to declare what data you collect. Based on this app:
-  financial info (transactions/debts) and personal info (name, phone
-  number) are collected, tied to the user's account, not shared with
-  third parties for advertising, and used only to operate the app.
-- Apple in particular reviews manually and may reject the first
-  submission with specific feedback — this is normal, not a sign
-  something is broken; resubmitting with fixes is expected.
+  declare what's collected: financial info (transactions/debts) and
+  personal info (name, phone, email), tied to the account, not shared for
+  advertising, used only to operate the app.
+- Apple reviews manually and may reject the first submission with
+  specific feedback — normal, not a sign something's broken.
 
 ## Realistic timeline
 
 Wrapping + first Android submission: a few days of focused work. Apple:
-budget 1–3 weeks total including at least one review round-trip.
+budget 1–3 weeks including at least one review round-trip.

@@ -1,5 +1,5 @@
 // A practical starting set, not exhaustive — add more as real farms in new
-// regions actually sign up (see STORE_SUBMISSION.md / SCALING.md).
+// regions actually sign up.
 const CURRENCIES = {
   KES: { symbol: 'KSh', name: 'Kenyan Shilling' },
   UGX: { symbol: 'USh', name: 'Ugandan Shilling' },

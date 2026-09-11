@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>Shamba Secure</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icons/favicon-32.png" sizes="32x32">
@@ -34,6 +34,17 @@
       <input type="password" id="loginPassword" placeholder="Your password">
       <div class="err" id="loginErr"></div>
       <button class="btn" id="loginBtn">Log in</button>
+      <button type="button" class="link-btn" id="showForgotBtn">Forgot your password?</button>
+    </div>
+
+    <div id="forgotForm" style="display:none">
+      <p class="note">Enter the email address on your account and we'll send a link to reset your password.</p>
+      <label>Email address</label>
+      <input type="email" id="forgotEmail" placeholder="you@example.com">
+      <div class="err" id="forgotErr"></div>
+      <div class="success-msg" id="forgotSuccess"></div>
+      <button class="btn" id="forgotBtn">Send reset link</button>
+      <button type="button" class="link-btn" id="backToLoginBtn">Back to log in</button>
     </div>
 
     <div id="registerForm" style="display:none">
@@ -45,10 +56,13 @@
       <select id="regCurrency"></select>
       <label>Phone number</label>
       <input type="text" id="regPhone" placeholder="07XX XXX XXX">
+      <label>Email address</label>
+      <input type="email" id="regEmail" placeholder="you@example.com">
       <label>Password</label>
       <input type="password" id="regPassword" placeholder="At least 6 characters">
       <div class="err" id="regErr"></div>
       <button class="btn" id="regBtn">Create farm account</button>
+      <p class="note" style="text-align:center;margin-top:10px;">By continuing you agree to our <a href="/privacy.html" target="_blank">privacy policy</a>.</p>
     </div>
   </div>
 </div>
@@ -110,16 +124,9 @@
           <div>
             <label>Category</label>
             <select id="txCategory">
-              <option>Crop sales</option>
-              <option>Livestock sales</option>
-              <option>Milk / produce sales</option>
-              <option>Feed</option>
-              <option>Veterinary</option>
-              <option>Seeds & fertilizer</option>
-              <option>Labor</option>
-              <option>Equipment</option>
-              <option>Transport</option>
-              <option>Other</option>
+              <option>Crop sales</option><option>Livestock sales</option><option>Milk / produce sales</option>
+              <option>Feed</option><option>Veterinary</option><option>Seeds & fertilizer</option>
+              <option>Labor</option><option>Equipment</option><option>Transport</option><option>Other</option>
             </select>
           </div>
           <div>
@@ -167,61 +174,30 @@
       <div class="card">
         <h2>Add an animal</h2>
         <div class="row">
-          <div>
-            <label>Tag / name</label>
-            <input type="text" id="anTag" placeholder="e.g. Cow 014">
-          </div>
-          <div>
-            <label>Species</label>
-            <select id="anSpecies">
-              <option>Cattle</option>
-              <option>Goat</option>
-              <option>Sheep</option>
-              <option>Poultry</option>
-              <option>Pig</option>
-              <option>Other</option>
-            </select>
+          <div><label>Tag / name</label><input type="text" id="anTag" placeholder="e.g. Cow 014"></div>
+          <div><label>Species</label>
+            <select id="anSpecies"><option>Cattle</option><option>Goat</option><option>Sheep</option><option>Poultry</option><option>Pig</option><option>Other</option></select>
           </div>
         </div>
         <div class="row">
-          <div>
-            <label>Breed</label>
-            <input type="text" id="anBreed" placeholder="Optional">
-          </div>
-          <div>
-            <label>Sex</label>
-            <select id="anSex">
-              <option value="">Unknown</option>
-              <option value="female">Female</option>
-              <option value="male">Male</option>
-            </select>
-          </div>
+          <div><label>Breed</label><input type="text" id="anBreed" placeholder="Optional"></div>
+          <div><label>Sex</label><select id="anSex"><option value="">Unknown</option><option value="female">Female</option><option value="male">Male</option></select></div>
         </div>
         <div class="row">
-          <div>
-            <label>Date of birth</label>
-            <input type="date" id="anDob">
-          </div>
-          <div>
-            <label>Date acquired</label>
-            <input type="date" id="anAcquired">
-          </div>
+          <div><label>Date of birth</label><input type="date" id="anDob"></div>
+          <div><label>Date acquired</label><input type="date" id="anAcquired"></div>
         </div>
         <div class="err" id="anErr"></div>
         <button class="btn" id="addAnimalBtn">Add animal</button>
       </div>
-
-      <div class="card">
-        <h2>Your herd</h2>
-        <div id="animalList"><div class="empty">No animals added yet.</div></div>
-      </div>
+      <div class="card"><h2>Your herd</h2><div id="animalList"></div></div>
     </section>
 
     <!-- BROILERS -->
     <section class="view" id="broilers">
       <div class="card">
         <h2>Start a new lot</h2>
-        <p class="note">Starts the 28-day cycle and schedules every reminder below automatically \u2014 vaccination on day 7, finisher feed &amp; booster on day 21, market-ready on day 28.</p>
+        <p class="note">Starts the 28-day cycle and schedules every reminder below automatically — vaccination on day 7, finisher feed &amp; booster on day 21, market-ready on day 28.</p>
         <label>Lot name / tag</label>
         <input type="text" id="lotName" placeholder="e.g. Lot A - August batch">
         <label>Number of birds</label>
@@ -231,12 +207,10 @@
         <div class="err" id="lotErr"></div>
         <button class="btn" id="addLotBtn">Start lot &amp; schedule reminders</button>
       </div>
-
       <div class="card">
         <h2>Default schedule</h2>
         <div id="scheduleRef"></div>
       </div>
-
       <div class="card">
         <h2>Your lots</h2>
         <div id="lotList"><div class="empty">No lots started yet.</div></div>
@@ -280,6 +254,8 @@
         <input type="text" id="wName">
         <label>Phone number</label>
         <input type="text" id="wPhone">
+        <label>Email (optional)</label>
+        <input type="email" id="wEmail">
         <label>Password</label>
         <input type="password" id="wPassword" placeholder="At least 6 characters">
         <div class="err" id="wErr"></div>
@@ -314,20 +290,6 @@
         <button class="btn secondary small" id="modalStatusBtn">Update status</button>
       </div>
     </div>
-
-    <h3 style="margin-top:18px">Remind me about this animal</h3>
-    <div class="row">
-      <div>
-        <label>Date</label>
-        <input type="date" id="modalRemDate">
-      </div>
-      <div>
-        <label>Message</label>
-        <input type="text" id="modalRemMessage" placeholder="e.g. Vet check-up due">
-      </div>
-    </div>
-    <div class="err" id="modalRemErr"></div>
-    <button class="btn secondary" id="modalRemBtn">Save reminder</button>
 
     <h3 style="margin-top:18px">Add a record</h3>
     <div class="row">
@@ -381,14 +343,8 @@
 
     <h3 style="margin-top:18px">Record a loss</h3>
     <div class="row">
-      <div>
-        <label>Date</label>
-        <input type="date" id="mortDate">
-      </div>
-      <div>
-        <label>Number lost</label>
-        <input type="number" id="mortQty" min="1">
-      </div>
+      <div><label>Date</label><input type="date" id="mortDate"></div>
+      <div><label>Number lost</label><input type="number" id="mortQty" min="1"></div>
     </div>
     <label>Note (optional)</label>
     <input type="text" id="mortNote" placeholder="e.g. Heat stress, disease">

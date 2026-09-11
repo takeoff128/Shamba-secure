@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>Reset your password — Shamba Secure</title>
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand-row">
+      <div class="mark">&#128274;</div>
+      <div>
+        <h1>Reset your password</h1>
+        <div class="tagline">Choose a new password for your Shamba Secure account.</div>
+      </div>
+    </div>
+
+    <div id="resetForm">
+      <label>New password</label>
+      <input type="password" id="newPassword" placeholder="At least 6 characters">
+      <label>Confirm new password</label>
+      <input type="password" id="confirmPassword" placeholder="Type it again">
+      <div class="err" id="resetErr"></div>
+      <button class="btn" id="resetBtn">Set new password</button>
+    </div>
+
+    <div id="resetDone" style="display:none">
+      <p class="success-msg">Your password has been reset. You can now log in with it.</p>
+      <a class="btn" href="/" style="text-decoration:none;display:block;">Go to log in</a>
+    </div>
+
+    <div id="resetInvalid" style="display:none">
+      <p class="err" style="min-height:auto;">This reset link is missing or malformed.</p>
+      <a class="btn secondary" href="/" style="text-decoration:none;display:block;">Back to Shamba Secure</a>
+    </div>
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const token = params.get('token');
+
+if (!token) {
+  document.getElementById('resetForm').style.display = 'none';
+  document.getElementById('resetInvalid').style.display = 'block';
+} else {
+  document.getElementById('resetBtn').addEventListener('click', async () => {
+    const err = document.getElementById('resetErr');
+    err.textContent = '';
+    const password = document.getElementById('newPassword').value;
+    const confirm = document.getElementById('confirmPassword').value;
+    if (!password || password.length < 6) { err.textContent = 'Password must be at least 6 characters.'; return; }
+    if (password !== confirm) { err.textContent = "Passwords don't match."; return; }
+
+    try {
+      const res = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Something went wrong.');
+      document.getElementById('resetForm').style.display = 'none';
+      document.getElementById('resetDone').style.display = 'block';
+    } catch (e) {
+      err.textContent = e.message;
+    }
+  });
+}
+</script>
+</body>
+</html>

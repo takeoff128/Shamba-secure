@@ -43,13 +43,10 @@ async function deliverReminder(reminder) {
       .get(reminder.subject_id, reminder.farm_id);
 
     if (debt && debt.settled) {
-      // Already paid — no need to chase anyone. Mark it sent so it stops showing as pending.
       db.prepare("UPDATE reminders SET sent_at = datetime('now') WHERE id = ?").run(reminder.id);
       return;
     }
 
-    // Only text the other party when THEY owe the farm — never auto-text
-    // someone the farm owes money to.
     if (debt && debt.direction === 'owed_to_me' && debt.phone) {
       try {
         await sendSms([debt.phone], reminder.message);
@@ -59,7 +56,6 @@ async function deliverReminder(reminder) {
       }
       return;
     }
-    // No phone on file, or it's money the farm owes — fall through to notify the farm instead.
   }
 
   const users = db.prepare('SELECT phone FROM users WHERE farm_id = ?').all(reminder.farm_id);
@@ -73,7 +69,6 @@ async function deliverReminder(reminder) {
   }
 }
 
-// Finds every reminder due today or earlier that hasn't been sent, and sends it.
 async function runDueReminders() {
   const today = new Date().toISOString().slice(0, 10);
   const due = db.prepare(

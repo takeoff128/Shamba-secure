@@ -2,12 +2,14 @@ require('dotenv').config();
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const path = require('path');
 const db = require('./db');
 const { setAuthCookie, clearAuthCookie, requireAuth, requireOwner } = require('./auth');
 const { runDueReminders, createDebtReminder } = require('./reminders');
 const { BROILER_SCHEDULE, createLotReminders } = require('./broiler');
 const { CURRENCIES } = require('./currency');
+const { sendPasswordResetEmail } = require('./email');
 const cron = require('node-cron');
 
 const app = express();
@@ -21,14 +23,16 @@ function badRequest(res, msg) { return res.status(400).json({ error: msg }); }
 
 // ---------------- AUTH ----------------
 
-// Create a brand new farm + its first (owner) user
 app.post('/api/register', (req, res) => {
-  const { farmName, name, phone, password, currency, country } = req.body || {};
-  if (!farmName || !name || !phone || !password) return badRequest(res, 'All fields are required.');
+  const { farmName, name, phone, email, password, currency, country } = req.body || {};
+  if (!farmName || !name || !phone || !email || !password) return badRequest(res, 'All fields are required.');
   if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
+  if (!/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email address.');
 
-  const existing = db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
-  if (existing) return badRequest(res, 'That phone number is already registered.');
+  const existingPhone = db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
+  if (existingPhone) return badRequest(res, 'That phone number is already registered.');
+  const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (existingEmail) return badRequest(res, 'That email is already registered.');
 
   const currencyCode = CURRENCIES[currency] ? currency : 'KES';
 
@@ -38,27 +42,31 @@ app.post('/api/register', (req, res) => {
 
   const hash = bcrypt.hashSync(password, 12);
   const insertUser = db.prepare(
-    'INSERT INTO users (farm_id, name, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO users (farm_id, name, phone, email, password_hash, role) VALUES (?, ?, ?, ?, ?, ?)'
   );
-  const userInfo = insertUser.run(farmId, name, phone, hash, 'owner');
+  const userInfo = insertUser.run(farmId, name, phone, email, hash, 'owner');
 
   setAuthCookie(res, { userId: userInfo.lastInsertRowid, farmId, name, role: 'owner' });
   res.json({ ok: true, farmName, name, role: 'owner', currency: currencyCode });
 });
 
-// Owner adds a worker to the same farm
 app.post('/api/users', requireAuth, requireOwner, (req, res) => {
-  const { name, phone, password } = req.body || {};
-  if (!name || !phone || !password) return badRequest(res, 'All fields are required.');
+  const { name, phone, email, password } = req.body || {};
+  if (!name || !phone || !password) return badRequest(res, 'Name, phone, and password are required.');
   if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
+  if (email && !/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email address.');
 
-  const existing = db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
-  if (existing) return badRequest(res, 'That phone number is already registered.');
+  const existingPhone = db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
+  if (existingPhone) return badRequest(res, 'That phone number is already registered.');
+  if (email) {
+    const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (existingEmail) return badRequest(res, 'That email is already registered.');
+  }
 
   const hash = bcrypt.hashSync(password, 12);
   const info = db.prepare(
-    'INSERT INTO users (farm_id, name, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)'
-  ).run(req.user.farmId, name, phone, hash, 'worker');
+    'INSERT INTO users (farm_id, name, phone, email, password_hash, role) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(req.user.farmId, name, phone, email || null, hash, 'worker');
 
   res.json({ ok: true, id: info.lastInsertRowid, name, phone, role: 'worker' });
 });
@@ -109,6 +117,56 @@ app.patch('/api/farm', requireAuth, requireOwner, (req, res) => {
   if (currency && !CURRENCIES[currency]) return badRequest(res, 'Unsupported currency.');
   db.prepare('UPDATE farms SET currency = COALESCE(?, currency), country = COALESCE(?, country), name = COALESCE(?, name) WHERE id = ?')
     .run(currency || null, country || null, name || null, req.user.farmId);
+  res.json({ ok: true });
+});
+
+// ---------------- PASSWORD RESET ----------------
+
+app.post('/api/forgot-password', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return badRequest(res, 'Enter your email address.');
+
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+
+  // Always respond the same way whether or not the email is registered —
+  // otherwise this endpoint could be used to check who has an account here.
+  const genericResponse = { ok: true, message: 'If that email is registered, a reset link has been sent.' };
+
+  if (!user) return res.json(genericResponse);
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+
+  db.prepare('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?')
+    .run(token, expires, user.id);
+
+  const farm = db.prepare('SELECT name FROM farms WHERE id = ?').get(user.farm_id);
+  const resetUrl = `${req.protocol}://${req.get('host')}/reset.html?token=${token}`;
+
+  try {
+    await sendPasswordResetEmail(email, resetUrl, farm ? farm.name : null);
+  } catch (err) {
+    console.error('[email] failed to send password reset:', err.message);
+    // Still return the generic response — don't reveal delivery failures either.
+  }
+
+  res.json(genericResponse);
+});
+
+app.post('/api/reset-password', (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password) return badRequest(res, 'Missing token or new password.');
+  if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
+
+  const user = db.prepare('SELECT * FROM users WHERE reset_token = ?').get(token);
+  if (!user || !user.reset_token_expires || new Date(user.reset_token_expires) < new Date()) {
+    return res.status(400).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
+  }
+
+  const hash = bcrypt.hashSync(password, 12);
+  db.prepare('UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?')
+    .run(hash, user.id);
+
   res.json({ ok: true });
 });
 
@@ -356,7 +414,6 @@ app.delete('/api/reminders/:id', requireAuth, requireOwner, (req, res) => {
   res.json({ ok: true });
 });
 
-// Lets the owner trigger today's SMS batch on demand, e.g. to confirm setup works.
 app.post('/api/reminders/run-now', requireAuth, requireOwner, async (req, res) => {
   const count = await runDueReminders();
   res.json({ ok: true, sent: count });

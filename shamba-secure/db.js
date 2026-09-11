@@ -27,8 +27,11 @@ CREATE TABLE IF NOT EXISTS users (
   farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   phone TEXT NOT NULL UNIQUE,
+  email TEXT UNIQUE,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'worker',
+  reset_token TEXT,
+  reset_token_expires TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -129,18 +132,31 @@ CREATE INDEX IF NOT EXISTS idx_broiler_mortality_lot ON broiler_mortality(lot_id
 
 module.exports = db;
 
-// Migration: add debts.phone if this database was created before that column existed.
+// ---- Migrations for databases created before a column existed ----
+
 const debtCols = db.prepare("PRAGMA table_info(debts)").all().map(c => c.name);
 if (!debtCols.includes('phone')) {
   db.exec('ALTER TABLE debts ADD COLUMN phone TEXT');
 }
 
-// Migration: add farms.currency / farms.country for databases created before
-// multi-currency support existed. Defaults existing farms to KES.
 const farmCols = db.prepare("PRAGMA table_info(farms)").all().map(c => c.name);
 if (!farmCols.includes('currency')) {
   db.exec("ALTER TABLE farms ADD COLUMN currency TEXT NOT NULL DEFAULT 'KES'");
 }
 if (!farmCols.includes('country')) {
   db.exec('ALTER TABLE farms ADD COLUMN country TEXT');
+}
+
+const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+if (!userCols.includes('email')) {
+  db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+  // Unique index added separately so existing NULL emails don't conflict —
+  // SQLite treats multiple NULLs as distinct under a UNIQUE index.
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)');
+}
+if (!userCols.includes('reset_token')) {
+  db.exec('ALTER TABLE users ADD COLUMN reset_token TEXT');
+}
+if (!userCols.includes('reset_token_expires')) {
+  db.exec('ALTER TABLE users ADD COLUMN reset_token_expires TEXT');
 }

@@ -15,14 +15,12 @@ function isOwner(){ return state.role === 'owner'; }
 function removeBtn(onclick){ return isOwner() ? `<button class="del" onclick="${onclick}">Remove</button>` : ''; }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmtMoney(n){ return (CURRENCY_SYMBOLS[state.currency] || state.currency) + ' ' + Math.round(n).toLocaleString(); }
+function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg; t.style.display = 'block';
   clearTimeout(showToast._t);
   showToast._t = setTimeout(()=> t.style.display='none', 2200);
-}
-function escapeHtml(str){
-  const d = document.createElement('div'); d.textContent = str || ''; return d.innerHTML;
 }
 
 async function api(path, opts = {}){
@@ -56,7 +54,31 @@ document.querySelectorAll('#authModeSeg button').forEach(b=>{
     b.classList.add('on');
     document.getElementById('loginForm').style.display = b.dataset.val==='login' ? 'block':'none';
     document.getElementById('registerForm').style.display = b.dataset.val==='register' ? 'block':'none';
+    document.getElementById('forgotForm').style.display = 'none';
   });
+});
+
+document.getElementById('showForgotBtn').addEventListener('click', ()=>{
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('forgotForm').style.display = 'block';
+});
+document.getElementById('backToLoginBtn').addEventListener('click', ()=>{
+  document.getElementById('forgotForm').style.display = 'none';
+  document.getElementById('loginForm').style.display = 'block';
+  document.getElementById('forgotErr').textContent = '';
+  document.getElementById('forgotSuccess').textContent = '';
+});
+
+document.getElementById('forgotBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('forgotErr'); err.textContent = '';
+  const success = document.getElementById('forgotSuccess'); success.textContent = '';
+  const email = document.getElementById('forgotEmail').value.trim();
+  if (!email){ err.textContent = 'Enter your email address.'; return; }
+  try{
+    const res = await api('/forgot-password', { method:'POST', body:{ email } });
+    success.textContent = res.message;
+    document.getElementById('forgotEmail').value = '';
+  }catch(e){ err.textContent = e.message; }
 });
 
 document.getElementById('loginBtn').addEventListener('click', async ()=>{
@@ -76,12 +98,13 @@ document.getElementById('regBtn').addEventListener('click', async ()=>{
   const name = document.getElementById('regName').value.trim();
   const currency = document.getElementById('regCurrency').value;
   const phone = document.getElementById('regPhone').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
   const password = document.getElementById('regPassword').value;
   const err = document.getElementById('regErr');
   err.textContent = '';
-  if (!farmName || !name || !phone || !password){ err.textContent = 'Fill in every field.'; return; }
+  if (!farmName || !name || !phone || !email || !password){ err.textContent = 'Fill in every field.'; return; }
   try{
-    await api('/register', { method:'POST', body:{ farmName, name, phone, password, currency } });
+    await api('/register', { method:'POST', body:{ farmName, name, phone, email, password, currency } });
     await enterApp();
   }catch(e){ err.textContent = e.message; }
 });
@@ -249,7 +272,6 @@ function openAnimalModal(id){
     [animal.species, animal.breed, animal.sex, animal.dob ? 'born ' + animal.dob : null].filter(Boolean).join(' \u00b7 ');
   document.getElementById('modalStatus').value = animal.status;
   document.getElementById('evDate').value = todayStr();
-  document.getElementById('modalRemDate').value = todayStr();
   document.getElementById('animalModal').style.display = 'flex';
   loadEvents(id);
 }
@@ -264,24 +286,6 @@ document.getElementById('modalStatusBtn').addEventListener('click', async ()=>{
   await api('/animals/'+state.currentAnimalId, { method:'PATCH', body:{ status } });
   showToast('Status updated');
   await loadAll();
-});
-
-document.getElementById('modalRemBtn').addEventListener('click', async ()=>{
-  const err = document.getElementById('modalRemErr'); err.textContent = '';
-  const remind_date = document.getElementById('modalRemDate').value;
-  const message = document.getElementById('modalRemMessage').value.trim();
-  if (!remind_date){ err.textContent = 'Pick a date.'; return; }
-  if (!message){ err.textContent = 'Enter a message.'; return; }
-  const animal = state.animals.find(a=>a.id===state.currentAnimalId);
-  try{
-    await api('/reminders', { method:'POST', body:{
-      remind_date, subject_type:'animal', subject_id: state.currentAnimalId,
-      message: `${animal.tag_id}: ${message}`
-    }});
-    document.getElementById('modalRemMessage').value = '';
-    showToast('Reminder saved');
-    await loadAll();
-  }catch(e){ err.textContent = e.message; }
 });
 
 async function loadEvents(animalId){
@@ -358,6 +362,8 @@ function renderScheduleRef(){
     </div>`).join('');
 }
 
+function totalLost(lot){ return lot.total_lost || 0; }
+
 function renderLots(){
   const el = document.getElementById('lotList');
   if (state.lots.length===0){ el.innerHTML = '<div class="empty">No lots started yet.</div>'; return; }
@@ -365,7 +371,7 @@ function renderLots(){
     const dayNum = daysBetween(lot.start_date, todayStr());
     const next = state.schedule.find(s => s.day > dayNum);
     const dayLabel = dayNum < 0 ? 'Not started yet' : `Day ${dayNum} of ${lot.cycle_days}`;
-    const lost = lot.total_lost || 0;
+    const lost = totalLost(lot);
     const remaining = lot.quantity != null ? lot.quantity - lost : null;
     const countLabel = remaining != null
       ? `${remaining} of ${lot.quantity} birds remaining${lost > 0 ? ` (${lost} lost)` : ''}`
@@ -396,7 +402,7 @@ async function deleteLot(id, evt){
 function openLotModal(id){
   state.currentLotId = id;
   const lot = state.lots.find(l=>l.id===id);
-  const lost = lot.total_lost || 0;
+  const lost = totalLost(lot);
   const remaining = lot.quantity != null ? lot.quantity - lost : null;
   document.getElementById('modalLotTitle').textContent = lot.name;
   document.getElementById('modalLotMeta').textContent =
@@ -456,7 +462,7 @@ document.getElementById('addMortBtn').addEventListener('click', async ()=>{
     showToast('Loss recorded');
     await loadAll();
     const lot = state.lots.find(l=>l.id===state.currentLotId);
-    const lost = lot.total_lost || 0;
+    const lost = totalLost(lot);
     const remaining = lot.quantity != null ? lot.quantity - lost : null;
     document.getElementById('modalLotMeta').textContent =
       [remaining != null ? `${remaining} of ${lot.quantity} birds remaining` : null, 'started ' + lot.start_date].filter(Boolean).join(' \u00b7 ');
@@ -533,7 +539,7 @@ function renderReminders(){
     </div>`).join('');
 }
 function labelForSubject(t){
-  return { debt:'Debt', animal:'Livestock', custom:'General' }[t] || t;
+  return { debt:'Debt', animal:'Livestock', broiler_lot:'Broiler lot', custom:'General' }[t] || t;
 }
 
 // ---------------- TEAM ----------------
@@ -541,19 +547,43 @@ document.getElementById('addWorkerBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('wErr'); err.textContent = '';
   const name = document.getElementById('wName').value.trim();
   const phone = document.getElementById('wPhone').value.trim();
+  const email = document.getElementById('wEmail').value.trim();
   const password = document.getElementById('wPassword').value;
   if (!name || !phone || !password){ err.textContent = 'Fill in every field.'; return; }
   try{
-    await api('/users', { method:'POST', body:{ name, phone, password } });
+    await api('/users', { method:'POST', body:{ name, phone, email: email || null, password } });
     document.getElementById('wName').value = '';
     document.getElementById('wPhone').value = '';
+    document.getElementById('wEmail').value = '';
     document.getElementById('wPassword').value = '';
     showToast('Added to the farm');
     await loadAll();
   }catch(e){ err.textContent = e.message; }
 });
 
-// ---------------- RENDER ----------------
+function renderUsers(){
+  const el = document.getElementById('userList');
+  if (state.users.length===0){ el.innerHTML = '<div class="empty">No one added yet.</div>'; return; }
+  el.innerHTML = state.users.map(u=>`
+    <div class="item">
+      <div><div class="name">${escapeHtml(u.name)}</div><div class="meta">${escapeHtml(u.phone)}</div></div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="pill ${u.role==='owner' ? 'owe-me' : 'settled'}">${u.role}</span>
+        ${isOwner() && u.role !== 'owner' ? `<button class="del" onclick="removeUser(${u.id})">Remove</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+async function removeUser(id){
+  if (!confirm('Remove this person from the farm? They will no longer be able to log in.')) return;
+  try{
+    await api('/users/'+id, { method:'DELETE' });
+    showToast('Removed from the farm');
+    await loadAll();
+  }catch(e){ showToast(e.message); }
+}
+
+// ---------------- DASHBOARD ----------------
 function renderDash(){
   const income = state.tx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const expense = state.tx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
@@ -624,26 +654,4 @@ function renderAnimals(){
         ${removeBtn(`deleteAnimal(${a.id}, event)`)}
       </div>
     </div>`).join('');
-}
-
-function renderUsers(){
-  const el = document.getElementById('userList');
-  if (state.users.length===0){ el.innerHTML = '<div class="empty">No one added yet.</div>'; return; }
-  el.innerHTML = state.users.map(u=>`
-    <div class="item">
-      <div><div class="name">${escapeHtml(u.name)}</div><div class="meta">${escapeHtml(u.phone)}</div></div>
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span class="pill ${u.role==='owner' ? 'owe-me' : 'settled'}">${u.role}</span>
-        ${isOwner() && u.role !== 'owner' ? `<button class="del" onclick="removeUser(${u.id})">Remove</button>` : ''}
-      </div>
-    </div>`).join('');
-}
-
-async function removeUser(id){
-  if (!confirm('Remove this person from the farm? They will no longer be able to log in.')) return;
-  try{
-    await api('/users/'+id, { method:'DELETE' });
-    showToast('Removed from the farm');
-    await loadAll();
-  }catch(e){ showToast(e.message); }
 }

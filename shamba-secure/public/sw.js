@@ -26,15 +26,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-
-  // Never cache API calls — financial and livestock data must always be fresh,
-  // and login/session cookies must never be served from a cache.
   if (url.pathname.startsWith('/api/')) {
     return;
   }
-
-  // App shell: try the network first so updates show up quickly, fall back
-  // to cache if offline (e.g. flaky rural connectivity).
   event.respondWith(
     fetch(event.request)
       .then((response) => {
