@@ -7,9 +7,10 @@ const path = require('path');
 const db = require('./db');
 const { setAuthCookie, clearAuthCookie, requireAuth, requireOwner } = require('./auth');
 const { runDueReminders, createDebtReminder } = require('./reminders');
-const { BROILER_SCHEDULE, createLotReminders } = require('./broiler');
+const { BROILER_SCHEDULE, SCHEDULES, getSchedule, createLotReminders } = require('./broiler');
 const { CURRENCIES } = require('./currency');
 const { sendPasswordResetEmail } = require('./email');
+const { isConfigured: pushConfigured, VAPID_PUBLIC_KEY } = require('./webpush');
 const cron = require('node-cron');
 
 const app = express();
@@ -303,7 +304,8 @@ app.delete('/api/events/:id', requireAuth, requireOwner, (req, res) => {
 // ---------------- BROILER LOTS ----------------
 
 app.get('/api/broiler-schedule', requireAuth, (req, res) => {
-  res.json(BROILER_SCHEDULE);
+  const type = req.query.type === 'layer' ? 'layer' : 'broiler';
+  res.json(getSchedule(type).schedule);
 });
 
 app.get('/api/broiler-lots', requireAuth, (req, res) => {
@@ -318,15 +320,17 @@ app.get('/api/broiler-lots', requireAuth, (req, res) => {
 });
 
 app.post('/api/broiler-lots', requireAuth, (req, res) => {
-  const { name, quantity, start_date } = req.body || {};
+  const { name, quantity, start_date, poultry_type } = req.body || {};
   if (!name) return badRequest(res, 'Give this lot a name or tag.');
   if (!start_date) return badRequest(res, 'Pick a start date.');
+  const type = poultry_type === 'layer' ? 'layer' : 'broiler';
+  const { defaultCycleDays } = getSchedule(type);
 
   const info = db.prepare(
-    'INSERT INTO broiler_lots (farm_id, name, quantity, start_date) VALUES (?,?,?,?)'
-  ).run(req.user.farmId, name, quantity ? parseInt(quantity, 10) : null, start_date);
+    'INSERT INTO broiler_lots (farm_id, name, poultry_type, quantity, start_date, cycle_days) VALUES (?,?,?,?,?,?)'
+  ).run(req.user.farmId, name, type, quantity ? parseInt(quantity, 10) : null, start_date, defaultCycleDays);
 
-  const lot = { id: info.lastInsertRowid, farm_id: req.user.farmId, name, start_date };
+  const lot = { id: info.lastInsertRowid, farm_id: req.user.farmId, name, start_date, poultry_type: type };
   createLotReminders(lot, req.user.userId);
 
   res.json({ id: info.lastInsertRowid });
@@ -384,6 +388,34 @@ app.post('/api/broiler-lots/:id/mortality', requireAuth, (req, res) => {
 app.delete('/api/broiler-lots/:id/mortality/:mortId', requireAuth, requireOwner, (req, res) => {
   db.prepare('DELETE FROM broiler_mortality WHERE id = ? AND farm_id = ? AND lot_id = ?')
     .run(req.params.mortId, req.user.farmId, req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------------- WEB PUSH ----------------
+
+app.get('/api/push/vapid-public-key', requireAuth, (req, res) => {
+  if (!pushConfigured()) return res.json({ configured: false });
+  res.json({ configured: true, publicKey: VAPID_PUBLIC_KEY });
+});
+
+app.post('/api/push/subscribe', requireAuth, (req, res) => {
+  const { endpoint, keys } = req.body || {};
+  if (!endpoint || !keys || !keys.p256dh || !keys.auth) return badRequest(res, 'Invalid subscription.');
+
+  // Re-subscribing with the same endpoint (e.g. re-enabling on the same
+  // device) replaces the old row rather than erroring on the unique constraint.
+  db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+  db.prepare(
+    'INSERT INTO push_subscriptions (farm_id, user_id, endpoint, p256dh, auth) VALUES (?,?,?,?,?)'
+  ).run(req.user.farmId, req.user.userId, endpoint, keys.p256dh, keys.auth);
+
+  res.json({ ok: true });
+});
+
+app.post('/api/push/unsubscribe', requireAuth, (req, res) => {
+  const { endpoint } = req.body || {};
+  if (!endpoint) return badRequest(res, 'Missing endpoint.');
+  db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, req.user.userId);
   res.json({ ok: true });
 });
 

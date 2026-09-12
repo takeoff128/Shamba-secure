@@ -1,5 +1,6 @@
 const db = require('./db');
 const { formatMoney } = require('./currency');
+const { sendPushToFarm } = require('./webpush');
 
 // ---------------- Africa's Talking setup ----------------
 // If credentials aren't set, we log to the console instead of sending —
@@ -36,7 +37,8 @@ async function sendSms(phones, message) {
 }
 
 // Sends one reminder — to the debtor directly if it's a debt someone owes
-// the farm (with a phone on file), otherwise to everyone on the farm.
+// the farm (with a phone on file), otherwise to everyone on the farm via
+// both SMS and a push notification for anyone with the app installed.
 async function deliverReminder(reminder) {
   if (reminder.subject_type === 'debt' && reminder.subject_id) {
     const debt = db.prepare('SELECT * FROM debts WHERE id = ? AND farm_id = ?')
@@ -48,6 +50,7 @@ async function deliverReminder(reminder) {
     }
 
     if (debt && debt.direction === 'owed_to_me' && debt.phone) {
+      // The debtor isn't a user of the app, so this is SMS-only — no push subscription exists for them.
       try {
         await sendSms([debt.phone], reminder.message);
         db.prepare("UPDATE reminders SET sent_at = datetime('now') WHERE id = ?").run(reminder.id);
@@ -63,6 +66,10 @@ async function deliverReminder(reminder) {
   if (phones.length === 0) return;
   try {
     await sendSms(phones, reminder.message);
+    await sendPushToFarm(reminder.farm_id, {
+      title: 'Shamba Secure reminder',
+      body: reminder.message
+    });
     db.prepare("UPDATE reminders SET sent_at = datetime('now') WHERE id = ?").run(reminder.id);
   } catch (err) {
     console.error(`[sms] failed to send reminder ${reminder.id}:`, err.message);

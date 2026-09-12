@@ -197,9 +197,14 @@
     <section class="view" id="broilers">
       <div class="card">
         <h2>Start a new lot</h2>
-        <p class="note">Starts the 28-day cycle and schedules every reminder below automatically — vaccination on day 7, finisher feed &amp; booster on day 21, market-ready on day 28.</p>
+        <p class="note">Choose broilers or layers below \u2014 the right vaccination and feed-change schedule gets created automatically, dated from your start date.</p>
         <label>Lot name / tag</label>
         <input type="text" id="lotName" placeholder="e.g. Lot A - August batch">
+        <label>Type</label>
+        <select id="lotPoultryType">
+          <option value="broiler">Broilers (28-day cycle to market)</option>
+          <option value="layer">Layers (reared to point of lay, then ongoing)</option>
+        </select>
         <label>Number of birds</label>
         <input type="number" id="lotQuantity" min="1" placeholder="e.g. 200">
         <label>Start date (day chicks arrive)</label>
@@ -219,6 +224,12 @@
 
     <!-- REMINDERS -->
     <section class="view" id="reminders">
+      <div class="card">
+        <h2>Notifications on this device</h2>
+        <p class="note">Get an in-app alert here, in addition to SMS, whenever a reminder is sent. Works after adding this app to your home screen.</p>
+        <div class="err" id="pushErr"></div>
+        <button class="btn secondary" id="pushToggleBtn">Enable notifications on this device</button>
+      </div>
       <div class="card">
         <h2>Add a reminder</h2>
         <p class="note">Everyone on this farm gets an SMS on the date you pick. Debts with a due date already get one automatically.</p>

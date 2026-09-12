@@ -5,6 +5,29 @@ const CURRENCY_SYMBOLS = {
   ZAR: 'R', INR: '\u20b9', PHP: '\u20b1', USD: '$', GBP: '\u00a3', EUR: '\u20ac'
 };
 
+const POULTRY_SCHEDULES = {
+  broiler: [
+    { day: 0, title: 'Lot started', detail: 'Set up the brooder at 32-35\u00b0C, start on chick/starter feed, and ensure clean water is always available.' },
+    { day: 7, title: 'First vaccination', detail: 'Vaccinate against Newcastle/Gumboro disease as per your vet\u2019s program. Watch for any birds off their feed.' },
+    { day: 14, title: 'Mid-cycle check', detail: 'Weigh a sample of birds, check for a booster dose due around now, and watch mortality and feed intake closely.' },
+    { day: 21, title: 'Switch to finisher feed & booster', detail: 'Move the flock onto finisher feed and give the booster vaccination dose.' },
+    { day: 28, title: 'End of cycle \u2014 ready for market', detail: 'Birds should be near market weight. Plan sales or slaughter and start preparing the next lot.' }
+  ],
+  layer: [
+    { day: 0, title: 'Chicks arrive', detail: 'Brooder at 32-35\u00b0C, chick mash, clean water always available. Marek\u2019s vaccine is often already given at the hatchery on day 1.' },
+    { day: 9, title: 'Newcastle & Gumboro (1st dose)', detail: 'Vaccinate against Newcastle Disease and Infectious Bursal Disease (Gumboro) as per your vet\u2019s program.' },
+    { day: 14, title: 'Gumboro booster', detail: 'Second Gumboro dose. Watch feed intake and droppings closely this week.' },
+    { day: 28, title: 'Fowl typhoid vaccine', detail: 'Vaccinate against fowl typhoid. Deworm if this hasn\u2019t been done yet.' },
+    { day: 42, title: 'Switch to grower mash', detail: 'Move off chick mash onto grower mash as the pullets mature.' },
+    { day: 56, title: 'Fowl pox vaccine', detail: 'Wing-web vaccination against fowl pox.' },
+    { day: 70, title: 'Newcastle booster', detail: 'Booster dose to maintain immunity through lay.' },
+    { day: 98, title: 'Deworm', detail: 'Routine deworming ahead of the switch to layer feed.' },
+    { day: 126, title: 'Switch to layer mash', detail: 'Move onto layer mash with higher calcium as point of lay approaches.' },
+    { day: 140, title: 'Point of lay \u2014 expect first eggs', detail: 'Most breeds begin laying around now. Start daily egg collection and recording \u2014 laying continues for many months from here.' }
+  ]
+};
+function scheduleFor(type){ return POULTRY_SCHEDULES[type] || POULTRY_SCHEDULES.broiler; }
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => { /* offline shell just won't be available */ });
@@ -130,6 +153,7 @@ async function enterApp(){
   farmCurrencySelect.innerHTML = document.getElementById('regCurrency').innerHTML;
   farmCurrencySelect.value = state.currency;
   await loadAll();
+  refreshPushButton();
 }
 
 document.getElementById('saveFarmSettingsBtn').addEventListener('click', async ()=>{
@@ -164,12 +188,12 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
 
 // ---------------- DATA LOAD ----------------
 async function loadAll(){
-  const [tx, debts, animals, users, reminders, lots, schedule] = await Promise.all([
+  const [tx, debts, animals, users, reminders, lots] = await Promise.all([
     api('/transactions'), api('/debts'), api('/animals'), api('/users'), api('/reminders'),
-    api('/broiler-lots'), api('/broiler-schedule')
+    api('/broiler-lots')
   ]);
   state.tx = tx; state.debts = debts; state.animals = animals; state.users = users;
-  state.reminders = reminders; state.lots = lots; state.schedule = schedule;
+  state.reminders = reminders; state.lots = lots;
   renderAll();
 }
 function renderAll(){
@@ -203,6 +227,7 @@ document.getElementById('addTxBtn').addEventListener('click', async ()=>{
   }catch(e){ err.textContent = e.message; }
 });
 async function deleteTx(id){
+  if (!confirm('Delete this transaction? This can\'t be undone.')) return;
   await api('/transactions/'+id, { method:'DELETE' });
   await loadAll();
 }
@@ -243,7 +268,11 @@ document.getElementById('addDebtBtn').addEventListener('click', async ()=>{
   }catch(e){ err.textContent = e.message; }
 });
 async function toggleSettle(id){ await api('/debts/'+id+'/settle', { method:'PATCH' }); await loadAll(); }
-async function deleteDebt(id){ await api('/debts/'+id, { method:'DELETE' }); await loadAll(); }
+async function deleteDebt(id){
+  if (!confirm('Delete this debt record? This can\'t be undone.')) return;
+  await api('/debts/'+id, { method:'DELETE' });
+  await loadAll();
+}
 
 // ---------------- ANIMALS ----------------
 document.getElementById('addAnimalBtn').addEventListener('click', async ()=>{
@@ -323,6 +352,7 @@ document.getElementById('addEventBtn').addEventListener('click', async ()=>{
 });
 
 async function deleteEvent(id){
+  if (!confirm('Delete this record? This can\'t be undone.')) return;
   await api('/events/'+id, { method:'DELETE' });
   loadEvents(state.currentAnimalId);
 }
@@ -336,18 +366,21 @@ async function deleteAnimal(id, evt){
 
 // ---------------- BROILER LOTS ----------------
 document.getElementById('lotStartDate').value = todayStr();
+document.getElementById('lotPoultryType').addEventListener('change', renderScheduleRef);
+renderScheduleRef();
 
 document.getElementById('addLotBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('lotErr'); err.textContent = '';
   const name = document.getElementById('lotName').value.trim();
+  const poultry_type = document.getElementById('lotPoultryType').value;
   const quantity = document.getElementById('lotQuantity').value;
   const start_date = document.getElementById('lotStartDate').value || todayStr();
   if (!name){ err.textContent = 'Give this lot a name or tag.'; return; }
   try{
-    await api('/broiler-lots', { method:'POST', body:{ name, quantity: quantity || null, start_date } });
+    await api('/broiler-lots', { method:'POST', body:{ name, poultry_type, quantity: quantity || null, start_date } });
     document.getElementById('lotName').value = '';
     document.getElementById('lotQuantity').value = '';
-    showToast('Lot started \u2014 28-day schedule created');
+    showToast(`Lot started \u2014 ${poultry_type === 'layer' ? 'layer' : 'broiler'} schedule created`);
     await loadAll();
   }catch(e){ err.textContent = e.message; }
 });
@@ -355,8 +388,9 @@ document.getElementById('addLotBtn').addEventListener('click', async ()=>{
 function daysBetween(a, b){ return Math.floor((new Date(b) - new Date(a)) / 86400000); }
 
 function renderScheduleRef(){
+  const type = document.getElementById('lotPoultryType').value;
   const el = document.getElementById('scheduleRef');
-  el.innerHTML = state.schedule.map(s=>`
+  el.innerHTML = scheduleFor(type).map(s=>`
     <div class="item">
       <div><div class="name">Day ${s.day}: ${escapeHtml(s.title)}</div><div class="meta">${escapeHtml(s.detail)}</div></div>
     </div>`).join('');
@@ -369,8 +403,9 @@ function renderLots(){
   if (state.lots.length===0){ el.innerHTML = '<div class="empty">No lots started yet.</div>'; return; }
   el.innerHTML = state.lots.map(lot=>{
     const dayNum = daysBetween(lot.start_date, todayStr());
-    const next = state.schedule.find(s => s.day > dayNum);
+    const next = scheduleFor(lot.poultry_type).find(s => s.day > dayNum);
     const dayLabel = dayNum < 0 ? 'Not started yet' : `Day ${dayNum} of ${lot.cycle_days}`;
+    const typeLabel = lot.poultry_type === 'layer' ? 'Layers' : 'Broilers';
     const lost = totalLost(lot);
     const remaining = lot.quantity != null ? lot.quantity - lost : null;
     const countLabel = remaining != null
@@ -382,7 +417,7 @@ function renderLots(){
         <h3>${escapeHtml(lot.name)}</h3>
         <span class="pill ${lot.status==='active' ? 'active' : 'settled'}">${lot.status}</span>
       </div>
-      <div class="meta">started ${lot.start_date} \u00b7 ${dayLabel}</div>
+      <div class="meta">${typeLabel} \u00b7 started ${lot.start_date} \u00b7 ${dayLabel}</div>
       ${countLabel ? `<div class="meta" style="margin-top:2px;${lost>0?'color:var(--rust-600);font-weight:600;':''}">${countLabel}</div>` : ''}
       ${next && lot.status==='active' ? `<div class="meta" style="margin-top:4px;color:var(--gold-600);font-weight:600;">Next: Day ${next.day} \u2014 ${escapeHtml(next.title)}</div>` : ''}
       <div style="text-align:right;margin-top:6px;">
@@ -404,9 +439,10 @@ function openLotModal(id){
   const lot = state.lots.find(l=>l.id===id);
   const lost = totalLost(lot);
   const remaining = lot.quantity != null ? lot.quantity - lost : null;
+  const typeLabel = lot.poultry_type === 'layer' ? 'Layers' : 'Broilers';
   document.getElementById('modalLotTitle').textContent = lot.name;
   document.getElementById('modalLotMeta').textContent =
-    [remaining != null ? `${remaining} of ${lot.quantity} birds remaining` : null, 'started ' + lot.start_date].filter(Boolean).join(' \u00b7 ');
+    [typeLabel, remaining != null ? `${remaining} of ${lot.quantity} birds remaining` : null, 'started ' + lot.start_date].filter(Boolean).join(' \u00b7 ');
   document.getElementById('modalLotStatus').value = lot.status;
   document.getElementById('lotRemDate').value = todayStr();
   document.getElementById('mortDate').value = todayStr();
@@ -471,6 +507,7 @@ document.getElementById('addMortBtn').addEventListener('click', async ()=>{
 });
 
 async function deleteMortality(lotId, mortId){
+  if (!confirm('Delete this loss record? This can\'t be undone.')) return;
   await api('/broiler-lots/'+lotId+'/mortality/'+mortId, { method:'DELETE' });
   await loadAll();
   loadMortality(lotId);
@@ -498,6 +535,64 @@ document.getElementById('lotRemBtn').addEventListener('click', async ()=>{
 // ---------------- REMINDERS ----------------
 document.getElementById('remDate').value = todayStr();
 
+function urlBase64ToUint8Array(base64String){
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+async function refreshPushButton(){
+  const btn = document.getElementById('pushToggleBtn');
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)){
+    btn.textContent = 'Not supported on this browser';
+    btn.disabled = true;
+    return;
+  }
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    btn.textContent = existing ? 'Notifications enabled \u2014 tap to disable' : 'Enable notifications on this device';
+  }catch(e){ /* leave default label */ }
+}
+
+document.getElementById('pushToggleBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('pushErr'); err.textContent = '';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)){
+    err.textContent = 'Push notifications aren\u2019t supported on this browser.';
+    return;
+  }
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+
+    if (existing){
+      await api('/push/unsubscribe', { method:'POST', body:{ endpoint: existing.endpoint } });
+      await existing.unsubscribe();
+      showToast('Notifications disabled on this device');
+      await refreshPushButton();
+      return;
+    }
+
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted'){ err.textContent = 'Notification permission was not granted.'; return; }
+
+    const vapid = await api('/push/vapid-public-key');
+    if (!vapid.configured){ err.textContent = 'Push notifications aren\u2019t set up on this server yet.'; return; }
+
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapid.publicKey)
+    });
+    const subJson = sub.toJSON();
+    await api('/push/subscribe', { method:'POST', body:{ endpoint: subJson.endpoint, keys: subJson.keys } });
+    showToast('Notifications enabled on this device');
+    await refreshPushButton();
+  }catch(e){ err.textContent = e.message || 'Could not enable notifications.'; }
+});
+
 document.getElementById('addReminderBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('remErr'); err.textContent = '';
   const remind_date = document.getElementById('remDate').value;
@@ -521,6 +616,7 @@ document.getElementById('runNowBtn').addEventListener('click', async ()=>{
 });
 
 async function deleteReminder(id){
+  if (!confirm('Delete this reminder? This can\'t be undone.')) return;
   await api('/reminders/'+id, { method:'DELETE' });
   await loadAll();
 }

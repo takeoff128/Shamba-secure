@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS broiler_lots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
+  poultry_type TEXT NOT NULL DEFAULT 'broiler' CHECK(poultry_type IN ('broiler','layer')),
   quantity INTEGER,
   start_date TEXT NOT NULL,
   cycle_days INTEGER NOT NULL DEFAULT 28,
@@ -120,6 +121,16 @@ CREATE TABLE IF NOT EXISTS broiler_mortality (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_tx_farm ON transactions(farm_id);
 CREATE INDEX IF NOT EXISTS idx_debts_farm ON debts(farm_id);
 CREATE INDEX IF NOT EXISTS idx_animals_farm ON animals(farm_id);
@@ -128,6 +139,8 @@ CREATE INDEX IF NOT EXISTS idx_reminders_farm ON reminders(farm_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(remind_date, sent_at);
 CREATE INDEX IF NOT EXISTS idx_broiler_lots_farm ON broiler_lots(farm_id);
 CREATE INDEX IF NOT EXISTS idx_broiler_mortality_lot ON broiler_mortality(lot_id);
+CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_push_subs_farm ON push_subscriptions(farm_id);
 `);
 
 module.exports = db;
@@ -159,4 +172,9 @@ if (!userCols.includes('reset_token')) {
 }
 if (!userCols.includes('reset_token_expires')) {
   db.exec('ALTER TABLE users ADD COLUMN reset_token_expires TEXT');
+}
+
+const lotCols = db.prepare("PRAGMA table_info(broiler_lots)").all().map(c => c.name);
+if (!lotCols.includes('poultry_type')) {
+  db.exec("ALTER TABLE broiler_lots ADD COLUMN poultry_type TEXT NOT NULL DEFAULT 'broiler'");
 }

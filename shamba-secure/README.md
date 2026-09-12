@@ -52,16 +52,52 @@ Set at registration, changeable later by the owner in Team → Farm
 settings. All amounts across the app format using the farm's chosen
 currency.
 
-## Broiler cycle tracking
+## Broiler & layer cycle tracking
 
-Starting a lot in the **Broilers** tab (name, bird count, start date)
-auto-schedules reminders for the standard 28-day cycle: day 0 (brooder
-setup), day 7 (first vaccination), day 14 (mid-cycle check), day 21
-(finisher feed & booster), day 28 (market-ready). These are general
-guidelines — confirm actual vaccine timing with your vet.
+Starting a lot in the **Broilers** tab now starts with a **Type**
+dropdown — Broilers or Layers — since they need completely different
+schedules:
+
+- **Broilers** (28-day cycle to market): day 0 (brooder setup), day 7
+  (first vaccination), day 14 (mid-cycle check), day 21 (finisher feed &
+  booster), day 28 (market-ready).
+- **Layers** (reared to point of lay, ~140 days, then ongoing egg
+  production): a longer vaccination and feed-transition schedule —
+  Newcastle/Gumboro doses, fowl typhoid, fowl pox, the switch from chick
+  mash → grower mash → layer mash, ending at point of lay around day 140
+  when egg collection begins. Laying itself continues for many months
+  past that point; the reminders cover the rearing stretch where timing
+  matters most.
+
+These are general guidelines — confirm actual vaccine timing with your
+vet, since programs vary by disease, hatchery, and region. The "Default
+schedule" reference card updates to match whichever type is selected in
+the dropdown.
 
 **Tracking losses:** open a lot and use "Record a loss" to log deaths
-over time. The lot card shows a running "X of Y birds remaining" count.
+over time. The lot card shows a running "X of Y birds remaining" count,
+for either type.
+
+## Web push notifications
+
+A second, optional channel alongside SMS — an in-app notification for
+anyone who's installed the app (added it to their home screen). On the
+Reminders tab, "Enable notifications on this device" requests permission
+and subscribes that specific browser/device. Whenever a farm-wide
+reminder fires, it's sent as both an SMS and a push notification;
+debtor-targeted reminders (money owed *to* the farm) remain SMS-only,
+since the debtor isn't a user of the app.
+
+To turn this on, generate a VAPID keypair once:
+```
+node -e "console.log(require('web-push').generateVAPIDKeys())"
+```
+and set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`
+(a `mailto:` address) in your environment variables. Leave them blank to
+run without push — SMS reminders work exactly the same either way.
+
+Subscriptions that go stale (browser data cleared, app uninstalled) are
+cleaned up automatically the next time a push to them fails permanently.
 
 ## SMS reminders
 
