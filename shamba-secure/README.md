@@ -40,17 +40,64 @@ lands on `/reset.html`, where a new password can be set. Requesting a
 reset for an email that isn't registered returns the same generic message
 as a real one, so this can't be used to check who has an account.
 
+**Email verification:** every new account gets a 6-digit code emailed to
+it right after registering, confirming the email actually belongs to the
+person who typed it in — this matters since that same email is what
+password recovery relies on. The app stays fully usable while
+unverified (nothing is blocked), but a banner stays visible at the top
+until the code is entered, with a "Resend code" option if it doesn't
+arrive. Existing accounts from before this feature are automatically
+treated as already verified — no one gets retroactively locked out.
+
+**Phone verification:** works the same way, but by SMS instead of email
+— a separate 6-digit code, a separate banner, tracked independently from
+email verification. **Note this costs one SMS credit per registration and
+per resend**, unlike email verification which is free — a real ongoing
+cost as signups grow, worth keeping in mind alongside Africa's Talking's
+per-message pricing.
+
 To actually send these emails (not just log them to the console), set
 `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` in `.env` — works with Gmail (using
 an app password), SendGrid, Mailgun, Postmark, or any SMTP relay. Leave
-them blank to develop locally without an email account; reset links get
-printed to the server log instead.
+them blank to develop locally without an email account; reset links and
+verification codes get printed to the server log instead.
 
 ## Multi-currency
 
 Set at registration, changeable later by the owner in Team → Farm
 settings. All amounts across the app format using the farm's chosen
 currency.
+
+## Picking a debtor's number from contacts
+
+On the "Add a debt" form, a "Pick from contacts" button appears next to
+the phone field — **only on browsers that support the Contact Picker
+API, which today means Chrome for Android**. It doesn't exist on iOS
+Safari, desktop browsers, or other Android browsers; those users just
+type the number in as before, no broken button shown.
+
+This is intentionally not a persistent "allow this app to access your
+contacts" permission — the browser shows its own native contact list,
+the person taps one contact, and only that contact's name/number is
+shared with the page. Nothing else in their address book is ever
+touched or stored.
+
+## Debt ledger
+
+Marking a debt "settled" now does real bookkeeping, not just a status
+flip: it automatically creates the matching transaction, so the money
+actually shows up in **Total in/out and the net balance** on the
+dashboard, not just as a checkbox in the debt list.
+
+- **Someone owes the farm, settled** → creates an **income** transaction
+  ("Debt repayment received from [person]").
+- **The farm owes someone, settled** → creates an **expense** transaction
+  ("Debt repayment made to [person]").
+
+Un-settling a debt (in case it was marked settled by mistake) **reverses
+this cleanly** — it deletes that exact transaction rather than leaving a
+phantom entry behind, so toggling settled/unsettled back and forth never
+creates duplicates or leaves orphaned records in the ledger.
 
 ## Broiler & layer cycle tracking
 

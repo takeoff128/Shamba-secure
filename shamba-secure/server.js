@@ -6,10 +6,10 @@ const crypto = require('crypto');
 const path = require('path');
 const db = require('./db');
 const { setAuthCookie, clearAuthCookie, requireAuth, requireOwner } = require('./auth');
-const { runDueReminders, createDebtReminder } = require('./reminders');
+const { runDueReminders, createDebtReminder, sendSms } = require('./reminders');
 const { BROILER_SCHEDULE, SCHEDULES, getSchedule, createLotReminders } = require('./broiler');
 const { CURRENCIES } = require('./currency');
-const { sendPasswordResetEmail } = require('./email');
+const { sendPasswordResetEmail, sendVerificationCodeEmail } = require('./email');
 const { isConfigured: pushConfigured, VAPID_PUBLIC_KEY } = require('./webpush');
 const cron = require('node-cron');
 
@@ -22,9 +22,37 @@ const PORT = process.env.PORT || 3000;
 
 function badRequest(res, msg) { return res.status(400).json({ error: msg }); }
 
+// Generates a 6-digit code, saves it against the user with a 15-minute
+// expiry, and emails it. Used at registration and for manual resends.
+async function issueVerificationCode(userId, email, farmName) {
+  const code = String(crypto.randomInt(100000, 1000000));
+  const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  db.prepare('UPDATE users SET verification_code = ?, verification_code_expires = ? WHERE id = ?')
+    .run(code, expires, userId);
+  try {
+    await sendVerificationCodeEmail(email, code, farmName);
+  } catch (err) {
+    console.error('[email] failed to send verification code:', err.message);
+  }
+}
+
+// Same idea as issueVerificationCode, but over SMS for the phone number.
+async function issuePhoneVerificationCode(userId, phone, farmName) {
+  const code = String(crypto.randomInt(100000, 1000000));
+  const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  db.prepare('UPDATE users SET phone_verification_code = ?, phone_verification_code_expires = ? WHERE id = ?')
+    .run(code, expires, userId);
+  const message = `Your Shamba Secure verification code${farmName ? ` for ${farmName}` : ''} is ${code}. It expires in 15 minutes.`;
+  try {
+    await sendSms([phone], message);
+  } catch (err) {
+    console.error('[sms] failed to send phone verification code:', err.message);
+  }
+}
+
 // ---------------- AUTH ----------------
 
-app.post('/api/register', (req, res) => {
+app.post('/api/register', async (req, res) => {
   const { farmName, name, phone, email, password, currency, country } = req.body || {};
   if (!farmName || !name || !phone || !email || !password) return badRequest(res, 'All fields are required.');
   if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
@@ -43,15 +71,17 @@ app.post('/api/register', (req, res) => {
 
   const hash = bcrypt.hashSync(password, 12);
   const insertUser = db.prepare(
-    'INSERT INTO users (farm_id, name, phone, email, password_hash, role) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO users (farm_id, name, phone, email, password_hash, role, email_verified, phone_verified) VALUES (?, ?, ?, ?, ?, ?, 0, 0)'
   );
   const userInfo = insertUser.run(farmId, name, phone, email, hash, 'owner');
 
   setAuthCookie(res, { userId: userInfo.lastInsertRowid, farmId, name, role: 'owner' });
+  await issueVerificationCode(userInfo.lastInsertRowid, email, farmName);
+  await issuePhoneVerificationCode(userInfo.lastInsertRowid, phone, farmName);
   res.json({ ok: true, farmName, name, role: 'owner', currency: currencyCode });
 });
 
-app.post('/api/users', requireAuth, requireOwner, (req, res) => {
+app.post('/api/users', requireAuth, requireOwner, async (req, res) => {
   const { name, phone, email, password } = req.body || {};
   if (!name || !phone || !password) return badRequest(res, 'Name, phone, and password are required.');
   if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
@@ -66,8 +96,14 @@ app.post('/api/users', requireAuth, requireOwner, (req, res) => {
 
   const hash = bcrypt.hashSync(password, 12);
   const info = db.prepare(
-    'INSERT INTO users (farm_id, name, phone, email, password_hash, role) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(req.user.farmId, name, phone, email || null, hash, 'worker');
+    'INSERT INTO users (farm_id, name, phone, email, password_hash, role, email_verified, phone_verified) VALUES (?, ?, ?, ?, ?, ?, ?, 0)'
+  ).run(req.user.farmId, name, phone, email || null, hash, 'worker', email ? 0 : 1);
+
+  const farm = db.prepare('SELECT name FROM farms WHERE id = ?').get(req.user.farmId);
+  if (email) {
+    await issueVerificationCode(info.lastInsertRowid, email, farm ? farm.name : null);
+  }
+  await issuePhoneVerificationCode(info.lastInsertRowid, phone, farm ? farm.name : null);
 
   res.json({ ok: true, id: info.lastInsertRowid, name, phone, role: 'worker' });
 });
@@ -106,7 +142,13 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', requireAuth, (req, res) => {
   const farm = db.prepare('SELECT name, currency, country FROM farms WHERE id = ?').get(req.user.farmId);
-  res.json({ name: req.user.name, role: req.user.role, farmName: farm ? farm.name : '', currency: farm ? farm.currency : 'KES', country: farm ? farm.country : null });
+  const user = db.prepare('SELECT phone, email, email_verified, phone_verified FROM users WHERE id = ?').get(req.user.userId);
+  res.json({
+    name: req.user.name, role: req.user.role, farmName: farm ? farm.name : '',
+    currency: farm ? farm.currency : 'KES', country: farm ? farm.country : null,
+    email: user ? user.email : null, emailVerified: user ? !!user.email_verified : true,
+    phone: user ? user.phone : null, phoneVerified: user ? !!user.phone_verified : true
+  });
 });
 
 app.get('/api/currencies', (req, res) => {
@@ -171,6 +213,65 @@ app.post('/api/reset-password', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------------- EMAIL VERIFICATION ----------------
+
+app.post('/api/verify-email', requireAuth, (req, res) => {
+  const { code } = req.body || {};
+  if (!code) return badRequest(res, 'Enter the code from your email.');
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.userId);
+  if (user.email_verified) return res.json({ ok: true, alreadyVerified: true });
+
+  if (!user.verification_code || user.verification_code !== code) {
+    return res.status(400).json({ error: 'That code is incorrect.' });
+  }
+  if (!user.verification_code_expires || new Date(user.verification_code_expires) < new Date()) {
+    return res.status(400).json({ error: 'That code has expired. Request a new one.' });
+  }
+
+  db.prepare('UPDATE users SET email_verified = 1, verification_code = NULL, verification_code_expires = NULL WHERE id = ?')
+    .run(user.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/resend-verification', requireAuth, async (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.userId);
+  if (user.email_verified) return res.json({ ok: true, alreadyVerified: true });
+  if (!user.email) return badRequest(res, 'No email address on this account to verify.');
+
+  const farm = db.prepare('SELECT name FROM farms WHERE id = ?').get(req.user.farmId);
+  await issueVerificationCode(user.id, user.email, farm ? farm.name : null);
+  res.json({ ok: true });
+});
+
+app.post('/api/verify-phone', requireAuth, (req, res) => {
+  const { code } = req.body || {};
+  if (!code) return badRequest(res, 'Enter the code from your text message.');
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.userId);
+  if (user.phone_verified) return res.json({ ok: true, alreadyVerified: true });
+
+  if (!user.phone_verification_code || user.phone_verification_code !== code) {
+    return res.status(400).json({ error: 'That code is incorrect.' });
+  }
+  if (!user.phone_verification_code_expires || new Date(user.phone_verification_code_expires) < new Date()) {
+    return res.status(400).json({ error: 'That code has expired. Request a new one.' });
+  }
+
+  db.prepare('UPDATE users SET phone_verified = 1, phone_verification_code = NULL, phone_verification_code_expires = NULL WHERE id = ?')
+    .run(user.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/resend-phone-verification', requireAuth, async (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.userId);
+  if (user.phone_verified) return res.json({ ok: true, alreadyVerified: true });
+
+  const farm = db.prepare('SELECT name FROM farms WHERE id = ?').get(req.user.farmId);
+  await issuePhoneVerificationCode(user.id, user.phone, farm ? farm.name : null);
+  res.json({ ok: true });
+});
+
 // ---------------- TRANSACTIONS ----------------
 
 app.get('/api/transactions', requireAuth, (req, res) => {
@@ -232,7 +333,28 @@ app.post('/api/debts', requireAuth, (req, res) => {
 app.patch('/api/debts/:id/settle', requireAuth, (req, res) => {
   const debt = db.prepare('SELECT * FROM debts WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
   if (!debt) return res.status(404).json({ error: 'Debt not found.' });
-  db.prepare('UPDATE debts SET settled = ? WHERE id = ?').run(debt.settled ? 0 : 1, debt.id);
+
+  if (!debt.settled) {
+    // Settling now: record the actual cash movement so it shows up in
+    // Total in/out and the net balance, not just the debt ledger.
+    const type = debt.direction === 'owed_to_me' ? 'income' : 'expense';
+    const description = debt.direction === 'owed_to_me'
+      ? `Debt repayment received from ${debt.person}`
+      : `Debt repayment made to ${debt.person}`;
+    const txInfo = db.prepare(
+      'INSERT INTO transactions (farm_id, user_id, type, amount, category, description, tx_date) VALUES (?,?,?,?,?,?,?)'
+    ).run(debt.farm_id, req.user.userId, type, debt.amount, 'Debt settlement', description, new Date().toISOString().slice(0, 10));
+
+    db.prepare('UPDATE debts SET settled = 1, settlement_tx_id = ? WHERE id = ?').run(txInfo.lastInsertRowid, debt.id);
+  } else {
+    // Un-settling: remove the transaction that was created when it was settled,
+    // so reversing a mistake doesn't leave a phantom entry in the cash ledger.
+    if (debt.settlement_tx_id) {
+      db.prepare('DELETE FROM transactions WHERE id = ? AND farm_id = ?').run(debt.settlement_tx_id, debt.farm_id);
+    }
+    db.prepare('UPDATE debts SET settled = 0, settlement_tx_id = NULL WHERE id = ?').run(debt.id);
+  }
+
   res.json({ ok: true });
 });
 

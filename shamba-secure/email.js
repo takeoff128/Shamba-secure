@@ -42,4 +42,15 @@ async function sendPasswordResetEmail(to, resetUrl, farmName) {
   return sendEmail(to, subject, html);
 }
 
-module.exports = { sendEmail, sendPasswordResetEmail };
+async function sendVerificationCodeEmail(to, code, farmName) {
+  const subject = 'Verify your email for Shamba Secure';
+  const html = `
+    <p>Hello,</p>
+    <p>Use this code to verify the email address on your ${farmName ? `"${farmName}" ` : ''}Shamba Secure account:</p>
+    <p style="font-size:28px; font-weight:700; letter-spacing:4px;">${code}</p>
+    <p>This code expires in 15 minutes. If you didn't create this account, you can safely ignore this email.</p>
+  `;
+  return sendEmail(to, subject, html);
+}
+
+module.exports = { sendEmail, sendPasswordResetEmail, sendVerificationCodeEmail };

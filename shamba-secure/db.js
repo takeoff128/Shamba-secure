@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL DEFAULT 'worker',
   reset_token TEXT,
   reset_token_expires TEXT,
+  email_verified INTEGER NOT NULL DEFAULT 1,
+  verification_code TEXT,
+  verification_code_expires TEXT,
+  phone_verified INTEGER NOT NULL DEFAULT 1,
+  phone_verification_code TEXT,
+  phone_verification_code_expires TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -58,6 +64,7 @@ CREATE TABLE IF NOT EXISTS debts (
   description TEXT,
   due_date TEXT,
   settled INTEGER NOT NULL DEFAULT 0,
+  settlement_tx_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -151,6 +158,9 @@ const debtCols = db.prepare("PRAGMA table_info(debts)").all().map(c => c.name);
 if (!debtCols.includes('phone')) {
   db.exec('ALTER TABLE debts ADD COLUMN phone TEXT');
 }
+if (!debtCols.includes('settlement_tx_id')) {
+  db.exec('ALTER TABLE debts ADD COLUMN settlement_tx_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL');
+}
 
 const farmCols = db.prepare("PRAGMA table_info(farms)").all().map(c => c.name);
 if (!farmCols.includes('currency')) {
@@ -177,4 +187,27 @@ if (!userCols.includes('reset_token_expires')) {
 const lotCols = db.prepare("PRAGMA table_info(broiler_lots)").all().map(c => c.name);
 if (!lotCols.includes('poultry_type')) {
   db.exec("ALTER TABLE broiler_lots ADD COLUMN poultry_type TEXT NOT NULL DEFAULT 'broiler'");
+}
+
+if (!userCols.includes('email_verified')) {
+  // Existing accounts predate this feature — treat them as already verified
+  // rather than suddenly locking anyone out.
+  db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1');
+}
+if (!userCols.includes('verification_code')) {
+  db.exec('ALTER TABLE users ADD COLUMN verification_code TEXT');
+}
+if (!userCols.includes('verification_code_expires')) {
+  db.exec('ALTER TABLE users ADD COLUMN verification_code_expires TEXT');
+}
+if (!userCols.includes('phone_verified')) {
+  // Existing accounts predate this feature — treat them as already verified
+  // rather than suddenly locking anyone out.
+  db.exec('ALTER TABLE users ADD COLUMN phone_verified INTEGER NOT NULL DEFAULT 1');
+}
+if (!userCols.includes('phone_verification_code')) {
+  db.exec('ALTER TABLE users ADD COLUMN phone_verification_code TEXT');
+}
+if (!userCols.includes('phone_verification_code_expires')) {
+  db.exec('ALTER TABLE users ADD COLUMN phone_verification_code_expires TEXT');
 }

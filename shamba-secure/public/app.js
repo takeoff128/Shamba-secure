@@ -148,6 +148,23 @@ async function enterApp(){
   document.getElementById('userLabel').textContent = me.name + ' \u00b7 ' + (me.role === 'owner' ? 'Owner' : 'Worker');
   document.getElementById('addWorkerCard').style.display = me.role === 'owner' ? 'block' : 'none';
   document.getElementById('farmSettingsCard').style.display = me.role === 'owner' ? 'block' : 'none';
+
+  const banner = document.getElementById('verifyBanner');
+  if (!me.emailVerified && me.email){
+    banner.style.display = 'block';
+    document.getElementById('verifyEmailLabel').textContent = me.email;
+  } else {
+    banner.style.display = 'none';
+  }
+
+  const phoneBanner = document.getElementById('verifyPhoneBanner');
+  if (!me.phoneVerified && me.phone){
+    phoneBanner.style.display = 'block';
+    document.getElementById('verifyPhoneLabel').textContent = me.phone;
+  } else {
+    phoneBanner.style.display = 'none';
+  }
+
   if (Object.keys(CURRENCIES).length === 0) await loadCurrencies();
   const farmCurrencySelect = document.getElementById('farmCurrency');
   farmCurrencySelect.innerHTML = document.getElementById('regCurrency').innerHTML;
@@ -155,6 +172,48 @@ async function enterApp(){
   await loadAll();
   refreshPushButton();
 }
+
+document.getElementById('verifyCodeBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('verifyErr'); err.textContent = '';
+  const success = document.getElementById('verifySuccess'); success.textContent = '';
+  const code = document.getElementById('verifyCodeInput').value.trim();
+  if (!code){ err.textContent = 'Enter the code from your email.'; return; }
+  try{
+    await api('/verify-email', { method:'POST', body:{ code } });
+    document.getElementById('verifyBanner').style.display = 'none';
+    showToast('Email verified');
+  }catch(e){ err.textContent = e.message; }
+});
+
+document.getElementById('resendCodeBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('verifyErr'); err.textContent = '';
+  const success = document.getElementById('verifySuccess'); success.textContent = '';
+  try{
+    await api('/resend-verification', { method:'POST' });
+    success.textContent = 'A new code has been sent.';
+  }catch(e){ err.textContent = e.message; }
+});
+
+document.getElementById('verifyPhoneCodeBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('verifyPhoneErr'); err.textContent = '';
+  const success = document.getElementById('verifyPhoneSuccess'); success.textContent = '';
+  const code = document.getElementById('verifyPhoneCodeInput').value.trim();
+  if (!code){ err.textContent = 'Enter the code from your text message.'; return; }
+  try{
+    await api('/verify-phone', { method:'POST', body:{ code } });
+    document.getElementById('verifyPhoneBanner').style.display = 'none';
+    showToast('Phone number verified');
+  }catch(e){ err.textContent = e.message; }
+});
+
+document.getElementById('resendPhoneCodeBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('verifyPhoneErr'); err.textContent = '';
+  const success = document.getElementById('verifyPhoneSuccess'); success.textContent = '';
+  try{
+    await api('/resend-phone-verification', { method:'POST' });
+    success.textContent = 'A new code has been sent.';
+  }catch(e){ err.textContent = e.message; }
+});
 
 document.getElementById('saveFarmSettingsBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('farmSettingsErr'); err.textContent = '';
@@ -233,6 +292,29 @@ async function deleteTx(id){
 }
 
 // ---------------- DEBTS ----------------
+// Contact Picker API — only Chrome for Android supports this today.
+// It's privacy-friendly by design: the browser shows its own native picker
+// and the person chooses one contact to share, once, per tap — no ongoing
+// "contacts access" permission is granted to the app.
+if ('contacts' in navigator && 'ContactsManager' in window) {
+  document.getElementById('pickContactBtn').style.display = 'inline-block';
+}
+document.getElementById('pickContactBtn').addEventListener('click', async ()=>{
+  try{
+    const contacts = await navigator.contacts.select(['name', 'tel'], { multiple: false });
+    if (!contacts || contacts.length === 0) return; // person cancelled the picker
+    const contact = contacts[0];
+    if (contact.tel && contact.tel.length > 0){
+      document.getElementById('debtPhone').value = contact.tel[0];
+    }
+    if (contact.name && contact.name.length > 0 && !document.getElementById('debtPerson').value.trim()){
+      document.getElementById('debtPerson').value = contact.name[0];
+    }
+  }catch(e){
+    showToast('Could not open contacts.');
+  }
+});
+
 let debtDirection = 'owed_to_me';
 document.querySelectorAll('#debtTypeSeg button').forEach(b=>{
   b.addEventListener('click', ()=>{
