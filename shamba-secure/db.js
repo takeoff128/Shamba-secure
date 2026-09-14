@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   amount REAL NOT NULL,
   category TEXT,
   description TEXT,
+  livestock_type TEXT CHECK(livestock_type IS NULL OR livestock_type IN ('chicken','goat','cow')),
+  quantity INTEGER,
   tx_date TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now'))
 );
@@ -160,6 +162,14 @@ if (!debtCols.includes('phone')) {
 }
 if (!debtCols.includes('settlement_tx_id')) {
   db.exec('ALTER TABLE debts ADD COLUMN settlement_tx_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL');
+}
+
+const txCols = db.prepare("PRAGMA table_info(transactions)").all().map(c => c.name);
+if (!txCols.includes('livestock_type')) {
+  db.exec('ALTER TABLE transactions ADD COLUMN livestock_type TEXT');
+}
+if (!txCols.includes('quantity')) {
+  db.exec('ALTER TABLE transactions ADD COLUMN quantity INTEGER');
 }
 
 const farmCols = db.prepare("PRAGMA table_info(farms)").all().map(c => c.name);

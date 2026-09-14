@@ -282,15 +282,26 @@ app.get('/api/transactions', requireAuth, (req, res) => {
 });
 
 app.post('/api/transactions', requireAuth, (req, res) => {
-  const { type, amount, category, description, tx_date } = req.body || {};
+  const { type, amount, category, description, tx_date, livestock_type, quantity } = req.body || {};
   if (!['income', 'expense'].includes(type)) return badRequest(res, 'Invalid transaction type.');
   const amt = parseFloat(amount);
   if (!amt || amt <= 0) return badRequest(res, 'Enter a valid amount.');
   if (!tx_date) return badRequest(res, 'Date is required.');
 
+  let animalType = null;
+  if (livestock_type) {
+    if (!['chicken', 'goat', 'cow'].includes(livestock_type)) return badRequest(res, 'Invalid animal type.');
+    animalType = livestock_type;
+  }
+  let qty = null;
+  if (quantity !== undefined && quantity !== null && quantity !== '') {
+    qty = parseInt(quantity, 10);
+    if (!qty || qty <= 0) return badRequest(res, 'Enter a valid number of pieces.');
+  }
+
   const info = db.prepare(
-    'INSERT INTO transactions (farm_id, user_id, type, amount, category, description, tx_date) VALUES (?,?,?,?,?,?,?)'
-  ).run(req.user.farmId, req.user.userId, type, amt, category || 'Other', description || '', tx_date);
+    'INSERT INTO transactions (farm_id, user_id, type, amount, category, description, livestock_type, quantity, tx_date) VALUES (?,?,?,?,?,?,?,?,?)'
+  ).run(req.user.farmId, req.user.userId, type, amt, category || 'Other', description || '', animalType, qty, tx_date);
 
   res.json({ id: info.lastInsertRowid });
 });

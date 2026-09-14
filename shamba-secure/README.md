@@ -82,6 +82,20 @@ the person taps one contact, and only that contact's name/number is
 shared with the page. Nothing else in their address book is ever
 touched or stored.
 
+## Tracking animal sales (pieces sold)
+
+The transaction form has an optional **Animal type** dropdown (Chicken,
+Goat, Cow) — pick one and a **Pieces** field appears to record how many
+were sold (or bought, if it's an expense) in that transaction. Skip it
+entirely for anything non-animal, like crop sales or feed purchases.
+
+Below the transaction list, a **Sales by animal type** card totals pieces
+sold and money earned per type, adding up automatically across every
+tagged transaction — so if you sell chickens in small batches over time,
+the running total builds itself instead of you tracking it separately.
+Only income transactions count toward this summary, since it's about
+sales specifically.
+
 ## Debt ledger
 
 Marking a debt "settled" now does real bookkeeping, not just a status

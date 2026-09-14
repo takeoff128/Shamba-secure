@@ -257,7 +257,7 @@ async function loadAll(){
 }
 function renderAll(){
   renderDash(); renderTx(); renderDebts(); renderAnimals(); renderUsers(); renderReminders();
-  renderScheduleRef(); renderLots();
+  renderScheduleRef(); renderLots(); renderAnimalSalesSummary();
 }
 
 // ---------------- TRANSACTIONS ----------------
@@ -269,18 +269,34 @@ document.querySelectorAll('#txTypeSeg button').forEach(b=>{
     b.classList.add('on'); txType = b.dataset.val;
   });
 });
+document.getElementById('txLivestockType').addEventListener('change', ()=>{
+  const show = document.getElementById('txLivestockType').value !== '';
+  document.getElementById('txQuantityLabel').style.display = show ? 'block' : 'none';
+  document.getElementById('txQuantity').style.display = show ? 'block' : 'none';
+  if (!show) document.getElementById('txQuantity').value = '';
+});
 document.getElementById('addTxBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('txErr'); err.textContent = '';
   const amount = parseFloat(document.getElementById('txAmount').value);
   const description = document.getElementById('txDesc').value.trim();
   const category = document.getElementById('txCategory').value;
   const tx_date = document.getElementById('txDate').value || todayStr();
+  const livestock_type = document.getElementById('txLivestockType').value || null;
+  const quantityRaw = document.getElementById('txQuantity').value;
   if (!amount || amount <= 0){ err.textContent = 'Enter an amount first.'; return; }
   if (!description){ err.textContent = 'Add a short description.'; return; }
+  if (livestock_type && (!quantityRaw || parseInt(quantityRaw, 10) <= 0)){ err.textContent = 'Enter how many pieces.'; return; }
   try{
-    await api('/transactions', { method:'POST', body:{ type:txType, amount, category, description, tx_date } });
+    await api('/transactions', { method:'POST', body:{
+      type:txType, amount, category, description, tx_date,
+      livestock_type, quantity: livestock_type ? quantityRaw : null
+    }});
     document.getElementById('txAmount').value = '';
     document.getElementById('txDesc').value = '';
+    document.getElementById('txLivestockType').value = '';
+    document.getElementById('txQuantity').value = '';
+    document.getElementById('txQuantityLabel').style.display = 'none';
+    document.getElementById('txQuantity').style.display = 'none';
     showToast('Transaction saved');
     await loadAll();
   }catch(e){ err.textContent = e.message; }
@@ -289,6 +305,23 @@ async function deleteTx(id){
   if (!confirm('Delete this transaction? This can\'t be undone.')) return;
   await api('/transactions/'+id, { method:'DELETE' });
   await loadAll();
+}
+
+function renderAnimalSalesSummary(){
+  const el = document.getElementById('animalSalesSummary');
+  const types = ['chicken', 'goat', 'cow'];
+  const labels = { chicken: 'Chicken', goat: 'Goats', cow: 'Cows' };
+  el.innerHTML = types.map(t=>{
+    const sales = state.tx.filter(tx => tx.type === 'income' && tx.livestock_type === t);
+    const pieces = sales.reduce((s, tx) => s + (tx.quantity || 0), 0);
+    const total = sales.reduce((s, tx) => s + tx.amount, 0);
+    return `
+      <div class="stat">
+        <div class="label">${labels[t]}</div>
+        <div class="value">${pieces} sold</div>
+        <div class="meta" style="margin-top:2px;">${fmtMoney(total)}</div>
+      </div>`;
+  }).join('');
 }
 
 // ---------------- DEBTS ----------------
@@ -789,14 +822,18 @@ function renderDash(){
 function renderTx(){
   const el = document.getElementById('txList');
   if (state.tx.length===0){ el.innerHTML = '<div class="empty">No transactions yet.</div>'; return; }
-  el.innerHTML = state.tx.slice(0,30).map(t=>`
+  const animalLabels = { chicken: 'chicken', goat: 'goats', cow: 'cows' };
+  el.innerHTML = state.tx.slice(0,30).map(t=>{
+    const animalNote = t.livestock_type ? ` &middot; ${t.quantity} ${animalLabels[t.livestock_type] || t.livestock_type}` : '';
+    return `
     <div class="item">
-      <div><div class="name">${escapeHtml(t.description)}</div><div class="meta">${escapeHtml(t.category)} &middot; ${t.tx_date}</div></div>
+      <div><div class="name">${escapeHtml(t.description)}</div><div class="meta">${escapeHtml(t.category)} &middot; ${t.tx_date}${animalNote}</div></div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="amt ${t.type==='income'?'plus':'minus'}">${t.type==='income'?'+':'-'}${fmtMoney(t.amount)}</div>
         ${removeBtn(`deleteTx(${t.id})`)}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderDebts(){
