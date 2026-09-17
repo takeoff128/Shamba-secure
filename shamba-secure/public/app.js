@@ -312,9 +312,19 @@ function renderAnimalSalesSummary(){
   const types = ['chicken', 'goat', 'cow'];
   const labels = { chicken: 'Chicken', goat: 'Goats', cow: 'Cows' };
   el.innerHTML = types.map(t=>{
-    const sales = state.tx.filter(tx => tx.type === 'income' && tx.livestock_type === t);
-    const pieces = sales.reduce((s, tx) => s + (tx.quantity || 0), 0);
-    const total = sales.reduce((s, tx) => s + tx.amount, 0);
+    // Direct cash sales — excluding the auto-created "Debt settlement"
+    // transactions, since those are counted from the debt itself below
+    // (a sale counts the moment it happens, not only once it's paid).
+    const cashSales = state.tx.filter(tx => tx.type === 'income' && tx.category !== 'Debt settlement' && tx.livestock_type === t);
+    // Sales made on credit — counted as soon as the debt is recorded,
+    // whether or not it's been paid yet.
+    const creditSales = state.debts.filter(d => d.direction === 'owed_to_me' && d.livestock_type === t);
+
+    const pieces = cashSales.reduce((s, tx) => s + (tx.quantity || 0), 0)
+      + creditSales.reduce((s, d) => s + (d.quantity || 0), 0);
+    const total = cashSales.reduce((s, tx) => s + tx.amount, 0)
+      + creditSales.reduce((s, d) => s + d.amount, 0);
+
     return `
       <div class="stat">
         <div class="label">${labels[t]}</div>
@@ -358,6 +368,12 @@ document.querySelectorAll('#debtTypeSeg button').forEach(b=>{
     document.getElementById('debtPhone').style.display = showPhone ? 'block' : 'none';
   });
 });
+document.getElementById('debtLivestockType').addEventListener('change', ()=>{
+  const show = document.getElementById('debtLivestockType').value !== '';
+  document.getElementById('debtQuantityLabel').style.display = show ? 'block' : 'none';
+  document.getElementById('debtQuantity').style.display = show ? 'block' : 'none';
+  if (!show) document.getElementById('debtQuantity').value = '';
+});
 document.getElementById('addDebtBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('debtErr'); err.textContent = '';
   const person = document.getElementById('debtPerson').value.trim();
@@ -365,19 +381,27 @@ document.getElementById('addDebtBtn').addEventListener('click', async ()=>{
   const amount = parseFloat(document.getElementById('debtAmount').value);
   const description = document.getElementById('debtDesc').value.trim();
   const due_date = document.getElementById('debtDue').value || null;
+  const livestock_type = document.getElementById('debtLivestockType').value || null;
+  const quantityRaw = document.getElementById('debtQuantity').value;
   if (!person){ err.textContent = 'Enter a name first.'; return; }
   if (!amount || amount <= 0){ err.textContent = 'Enter an amount first.'; return; }
+  if (livestock_type && (!quantityRaw || parseInt(quantityRaw, 10) <= 0)){ err.textContent = 'Enter how many pieces.'; return; }
   try{
     await api('/debts', { method:'POST', body:{
       direction:debtDirection, person,
       phone: debtDirection === 'owed_to_me' ? (phone || null) : null,
-      amount, description, due_date
+      amount, description, due_date,
+      livestock_type, quantity: livestock_type ? quantityRaw : null
     }});
     document.getElementById('debtPerson').value = '';
     document.getElementById('debtPhone').value = '';
     document.getElementById('debtAmount').value = '';
     document.getElementById('debtDesc').value = '';
     document.getElementById('debtDue').value = '';
+    document.getElementById('debtLivestockType').value = '';
+    document.getElementById('debtQuantity').value = '';
+    document.getElementById('debtQuantityLabel').style.display = 'none';
+    document.getElementById('debtQuantity').style.display = 'none';
     showToast('Debt saved');
     await loadAll();
   }catch(e){ err.textContent = e.message; }
@@ -839,10 +863,13 @@ function renderTx(){
 function renderDebts(){
   const el = document.getElementById('debtList');
   if (state.debts.length===0){ el.innerHTML = '<div class="empty">No debts recorded.</div>'; return; }
-  el.innerHTML = state.debts.map(d=>`
+  const animalLabels = { chicken: 'chicken', goat: 'goats', cow: 'cows' };
+  el.innerHTML = state.debts.map(d=>{
+    const animalNote = d.livestock_type ? ` &middot; ${d.quantity} ${animalLabels[d.livestock_type] || d.livestock_type}` : '';
+    return `
     <div class="item">
       <div><div class="name">${escapeHtml(d.person)}${d.phone ? ' <span class="meta">(' + escapeHtml(d.phone) + ')</span>' : ''}</div>
-        <div class="meta">${escapeHtml(d.description||'')} ${d.due_date ? '&middot; due '+d.due_date : ''}</div></div>
+        <div class="meta">${escapeHtml(d.description||'')}${animalNote} ${d.due_date ? '&middot; due '+d.due_date : ''}</div></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span class="pill ${d.settled ? 'settled' : (d.direction==='owed_to_me'?'owe-me':'i-owe')}">${d.settled ? 'Settled' : (d.direction==='owed_to_me' ? 'Owes you' : 'You owe')}</span>
         <div class="amt">${fmtMoney(d.amount)}</div>
@@ -852,7 +879,8 @@ function renderDebts(){
       <button class="del" style="color:var(--leaf-700)" onclick="toggleSettle(${d.id})">${d.settled?'Mark unsettled':'Mark settled'}</button>
       ${removeBtn(`deleteDebt(${d.id})`)}
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderAnimals(){

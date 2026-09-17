@@ -321,15 +321,26 @@ app.get('/api/debts', requireAuth, (req, res) => {
 });
 
 app.post('/api/debts', requireAuth, (req, res) => {
-  const { direction, person, phone, amount, description, due_date } = req.body || {};
+  const { direction, person, phone, amount, description, due_date, livestock_type, quantity } = req.body || {};
   if (!['owed_to_me', 'i_owe'].includes(direction)) return badRequest(res, 'Invalid debt direction.');
   if (!person) return badRequest(res, 'Enter a name.');
   const amt = parseFloat(amount);
   if (!amt || amt <= 0) return badRequest(res, 'Enter a valid amount.');
 
+  let animalType = null;
+  if (livestock_type) {
+    if (!['chicken', 'goat', 'cow'].includes(livestock_type)) return badRequest(res, 'Invalid animal type.');
+    animalType = livestock_type;
+  }
+  let qty = null;
+  if (quantity !== undefined && quantity !== null && quantity !== '') {
+    qty = parseInt(quantity, 10);
+    if (!qty || qty <= 0) return badRequest(res, 'Enter a valid number of pieces.');
+  }
+
   const info = db.prepare(
-    'INSERT INTO debts (farm_id, user_id, direction, person, phone, amount, description, due_date) VALUES (?,?,?,?,?,?,?,?)'
-  ).run(req.user.farmId, req.user.userId, direction, person, phone || null, amt, description || '', due_date || null);
+    'INSERT INTO debts (farm_id, user_id, direction, person, phone, amount, description, livestock_type, quantity, due_date) VALUES (?,?,?,?,?,?,?,?,?,?)'
+  ).run(req.user.farmId, req.user.userId, direction, person, phone || null, amt, description || '', animalType, qty, due_date || null);
 
   if (due_date) {
     createDebtReminder(
@@ -353,8 +364,8 @@ app.patch('/api/debts/:id/settle', requireAuth, (req, res) => {
       ? `Debt repayment received from ${debt.person}`
       : `Debt repayment made to ${debt.person}`;
     const txInfo = db.prepare(
-      'INSERT INTO transactions (farm_id, user_id, type, amount, category, description, tx_date) VALUES (?,?,?,?,?,?,?)'
-    ).run(debt.farm_id, req.user.userId, type, debt.amount, 'Debt settlement', description, new Date().toISOString().slice(0, 10));
+      'INSERT INTO transactions (farm_id, user_id, type, amount, category, description, livestock_type, quantity, tx_date) VALUES (?,?,?,?,?,?,?,?,?)'
+    ).run(debt.farm_id, req.user.userId, type, debt.amount, 'Debt settlement', description, debt.livestock_type || null, debt.quantity || null, new Date().toISOString().slice(0, 10));
 
     db.prepare('UPDATE debts SET settled = 1, settlement_tx_id = ? WHERE id = ?').run(txInfo.lastInsertRowid, debt.id);
   } else {

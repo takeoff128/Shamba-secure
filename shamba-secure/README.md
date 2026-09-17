@@ -96,6 +96,16 @@ the running total builds itself instead of you tracking it separately.
 Only income transactions count toward this summary, since it's about
 sales specifically.
 
+**Debts carry the same tagging.** If someone buys chickens on credit,
+tag the debt itself with the animal type and piece count when you create
+it — **it counts toward Sales by animal type immediately**, not only
+once the debt is settled. The reasoning: the animal already left the
+farm at the point of sale, whether the buyer has paid yet or not — that's
+a different question from whether the *cash* has actually arrived, which
+the dashboard's Total in/Net balance still correctly waits for (via
+settlement) before counting. Settling the debt doesn't add the pieces a
+second time; it's the same sale, just now paid for.
+
 ## Debt ledger
 
 Marking a debt "settled" now does real bookkeeping, not just a status
