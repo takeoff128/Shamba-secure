@@ -108,6 +108,7 @@
       <button class="tab-btn" data-tab="livestock">Livestock</button>
       <button class="tab-btn" data-tab="broilers">Poultry</button>
       <button class="tab-btn" data-tab="reminders">Reminders</button>
+      <button class="tab-btn" data-tab="history">History</button>
       <button class="tab-btn" data-tab="team">Team</button>
     </nav>
 
@@ -228,7 +229,10 @@
       </div>
 
       <div class="card">
-        <h2>Debt ledger</h2>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+          <h2 style="margin:0">Debt ledger</h2>
+          <button class="btn secondary small" id="clearDebtsBtn" style="display:none;color:var(--rust-600);border-color:var(--rust-600);">Clear all</button>
+        </div>
         <div class="list" id="debtList"></div>
       </div>
     </section>
@@ -310,6 +314,20 @@
           <button class="btn secondary small" id="runNowBtn">Send due ones now</button>
         </div>
         <div class="list" id="reminderList"></div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="view" id="history">
+      <div class="card" id="txHistoryCard">
+        <h2>Transaction history</h2>
+        <p class="note">Every transaction ever recorded for this farm, most recent first.</p>
+        <div class="list" id="txHistoryList"></div>
+      </div>
+      <div class="card" id="debtHistoryCard">
+        <h2>Debt history</h2>
+        <p class="note">Every debt ever recorded for this farm, including settled ones.</p>
+        <div class="list" id="debtHistoryList"></div>
       </div>
     </section>
 

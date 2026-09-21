@@ -115,6 +115,23 @@ a debt marked "settled" pointing at a transaction that no longer exists.
 Workers never see this button, and the backend rejects the request even
 if they try to call it directly.
 
+## History tab
+
+The Finance tab's transaction and debt lists now show only the **10 most
+recent** entries each, keeping the page fast to scan. Once either list
+has more than 10, a "View all" link appears below it, jumping to the new
+**History** tab — which shows the complete, unfiltered list for both,
+with the same Edit/Settle/Delete controls as the main view.
+
+**Clearing all debts at once** works the same way as clearing all
+transactions: an owner-only "Clear all" button on the Debt ledger card,
+with a confirmation showing exactly how many will be removed. Unlike
+transactions, wiping debts **never deletes the real transactions** that
+came from settling them — that's actual cash history and stays intact;
+only the debt-tracking entries themselves are removed, along with any
+reminders tied to them (so nothing is left pointing at a debt that no
+longer exists).
+
 ## Editing transactions and debts
 
 Every transaction and debt now has an **Edit** button, opening a form

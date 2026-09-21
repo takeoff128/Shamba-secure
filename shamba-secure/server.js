@@ -515,8 +515,26 @@ app.patch('/api/debts/:id/settle', requireAuth, (req, res) => {
 });
 
 app.delete('/api/debts/:id', requireAuth, requireOwner, (req, res) => {
+  db.prepare("DELETE FROM reminders WHERE farm_id = ? AND subject_type = 'debt' AND subject_id = ?")
+    .run(req.user.farmId, req.params.id);
   db.prepare('DELETE FROM debts WHERE id = ? AND farm_id = ?').run(req.params.id, req.user.farmId);
   res.json({ ok: true });
+});
+
+// Wipes every debt for the farm in one go. Any transaction created by
+// settling a debt is left alone — that's real cash history and shouldn't
+// disappear just because the debt-tracking entry is cleared. Reminders
+// tied to these debts are cleaned up too, so nothing orphaned is left
+// behind pointing at a debt that no longer exists.
+app.delete('/api/debts', requireAuth, requireOwner, (req, res) => {
+  const farmId = req.user.farmId;
+  const wipe = db.transaction(() => {
+    db.prepare("DELETE FROM reminders WHERE farm_id = ? AND subject_type = 'debt'").run(farmId);
+    const info = db.prepare('DELETE FROM debts WHERE farm_id = ?').run(farmId);
+    return info.changes;
+  });
+  const deleted = wipe();
+  res.json({ ok: true, deleted });
 });
 
 // ---------------- ANIMALS ----------------

@@ -149,6 +149,7 @@ async function enterApp(){
   document.getElementById('addWorkerCard').style.display = me.role === 'owner' ? 'block' : 'none';
   document.getElementById('farmSettingsCard').style.display = me.role === 'owner' ? 'block' : 'none';
   document.getElementById('clearTxBtn').style.display = me.role === 'owner' ? 'inline-block' : 'none';
+  document.getElementById('clearDebtsBtn').style.display = me.role === 'owner' ? 'inline-block' : 'none';
 
   const banner = document.getElementById('verifyBanner');
   if (!me.emailVerified && me.email){
@@ -259,6 +260,7 @@ async function loadAll(){
 function renderAll(){
   renderDash(); renderTx(); renderDebts(); renderAnimals(); renderUsers(); renderReminders();
   renderScheduleRef(); renderLots(); renderAnimalSalesSummary();
+  renderTxHistory(); renderDebtHistory();
 }
 
 // ---------------- TRANSACTIONS ----------------
@@ -319,6 +321,21 @@ document.getElementById('clearTxBtn').addEventListener('click', async ()=>{
   try{
     const res = await api('/transactions', { method:'DELETE' });
     showToast(`Cleared ${res.deleted} transaction${res.deleted === 1 ? '' : 's'}`);
+    await loadAll();
+  }catch(e){ showToast(e.message); }
+});
+
+document.getElementById('clearDebtsBtn').addEventListener('click', async ()=>{
+  const count = state.debts.length;
+  if (count === 0){ showToast('No debts to clear'); return; }
+  const confirmed = confirm(
+    `Delete all ${count} debt${count === 1 ? '' : 's'} for this farm? ` +
+    `This can't be undone. Any transactions already created by settling these debts will NOT be removed \u2014 only the debt entries themselves.`
+  );
+  if (!confirmed) return;
+  try{
+    const res = await api('/debts', { method:'DELETE' });
+    showToast(`Cleared ${res.deleted} debt${res.deleted === 1 ? '' : 's'}`);
     await loadAll();
   }catch(e){ showToast(e.message); }
 });
@@ -859,13 +876,10 @@ function renderDash(){
   `;
 }
 
-function renderTx(){
-  const el = document.getElementById('txList');
-  if (state.tx.length===0){ el.innerHTML = '<div class="empty">No transactions yet.</div>'; return; }
+function txRowHtml(t){
   const animalLabels = { chicken: 'chicken', goat: 'goats', cow: 'cows' };
-  el.innerHTML = state.tx.slice(0,30).map(t=>{
-    const animalNote = t.livestock_type ? ` &middot; ${t.quantity} ${animalLabels[t.livestock_type] || t.livestock_type}` : '';
-    return `
+  const animalNote = t.livestock_type ? ` &middot; ${t.quantity} ${animalLabels[t.livestock_type] || t.livestock_type}` : '';
+  return `
     <div class="item">
       <div><div class="name">${escapeHtml(t.description)}</div><div class="meta">${escapeHtml(t.category)} &middot; ${t.tx_date}${animalNote}</div></div>
       <div style="display:flex;align-items:center;gap:10px;">
@@ -874,16 +888,12 @@ function renderTx(){
         ${removeBtn(`deleteTx(${t.id})`)}
       </div>
     </div>`;
-  }).join('');
 }
 
-function renderDebts(){
-  const el = document.getElementById('debtList');
-  if (state.debts.length===0){ el.innerHTML = '<div class="empty">No debts recorded.</div>'; return; }
+function debtRowHtml(d){
   const animalLabels = { chicken: 'chicken', goat: 'goats', cow: 'cows' };
-  el.innerHTML = state.debts.map(d=>{
-    const animalNote = d.livestock_type ? ` &middot; ${d.quantity} ${animalLabels[d.livestock_type] || d.livestock_type}` : '';
-    return `
+  const animalNote = d.livestock_type ? ` &middot; ${d.quantity} ${animalLabels[d.livestock_type] || d.livestock_type}` : '';
+  return `
     <div class="item">
       <div><div class="name">${escapeHtml(d.person)}${d.phone ? ' <span class="meta">(' + escapeHtml(d.phone) + ')</span>' : ''}</div>
         <div class="meta">${escapeHtml(d.description||'')}${animalNote} ${d.due_date ? '&middot; due '+d.due_date : ''}</div></div>
@@ -898,7 +908,57 @@ function renderDebts(){
       ${removeBtn(`deleteDebt(${d.id})`)}
     </div>
   `;
-  }).join('');
+}
+
+const HISTORY_PREVIEW_LIMIT = 10;
+
+function goToHistory(section){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab === 'history'));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id === 'history'));
+  const card = document.getElementById(section === 'debts' ? 'debtHistoryCard' : 'txHistoryCard');
+  if (card) card.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function renderTx(){
+  const el = document.getElementById('txList');
+  if (state.tx.length===0){ el.innerHTML = '<div class="empty">No transactions yet.</div>'; return; }
+  const shown = state.tx.slice(0, HISTORY_PREVIEW_LIMIT);
+  let html = shown.map(txRowHtml).join('');
+  if (state.tx.length > HISTORY_PREVIEW_LIMIT){
+    html += `<div style="text-align:center;padding-top:10px;">
+      <button class="link-btn" onclick="goToHistory('transactions')">View all ${state.tx.length} transactions &rarr;</button>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderDebts(){
+  const el = document.getElementById('debtList');
+  if (state.debts.length===0){ el.innerHTML = '<div class="empty">No debts recorded.</div>'; return; }
+  const shown = state.debts.slice(0, HISTORY_PREVIEW_LIMIT);
+  let html = shown.map(debtRowHtml).join('');
+  if (state.debts.length > HISTORY_PREVIEW_LIMIT){
+    html += `<div style="text-align:center;padding-top:10px;">
+      <button class="link-btn" onclick="goToHistory('debts')">View all ${state.debts.length} debts &rarr;</button>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderTxHistory(){
+  const el = document.getElementById('txHistoryList');
+  if (!el) return;
+  el.innerHTML = state.tx.length === 0
+    ? '<div class="empty">No transactions yet.</div>'
+    : state.tx.map(txRowHtml).join('');
+}
+
+function renderDebtHistory(){
+  const el = document.getElementById('debtHistoryList');
+  if (!el) return;
+  el.innerHTML = state.debts.length === 0
+    ? '<div class="empty">No debts recorded.</div>'
+    : state.debts.map(debtRowHtml).join('');
 }
 
 function renderAnimals(){
