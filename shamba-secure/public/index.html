@@ -176,7 +176,10 @@
       </div>
 
       <div class="card">
-        <h2>Recent transactions</h2>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+          <h2 style="margin:0">Recent transactions</h2>
+          <button class="btn secondary small" id="clearTxBtn" style="display:none;color:var(--rust-600);border-color:var(--rust-600);">Clear all</button>
+        </div>
         <div class="list" id="txList"></div>
       </div>
 
@@ -338,6 +341,97 @@
         <div class="list" id="userList"></div>
       </div>
     </section>
+  </div>
+</div>
+
+<!-- Edit transaction modal -->
+<div id="txEditModal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Edit transaction</h2>
+      <button class="del" id="closeTxEditBtn">Close</button>
+    </div>
+    <div class="seg" id="txEditTypeSeg">
+      <button type="button" class="on" data-val="income">Money in</button>
+      <button type="button" data-val="expense">Money out</button>
+    </div>
+    <label>Amount</label>
+    <input type="number" id="txEditAmount" min="0">
+    <label>What for</label>
+    <input type="text" id="txEditDesc">
+    <div class="row">
+      <div>
+        <label>Category</label>
+        <select id="txEditCategory">
+          <option>Crop sales</option><option>Livestock sales</option><option>Milk / produce sales</option>
+          <option>Feed</option><option>Veterinary</option><option>Seeds & fertilizer</option>
+          <option>Labor</option><option>Equipment</option><option>Transport</option><option>Debt settlement</option><option>Other</option>
+        </select>
+      </div>
+      <div>
+        <label>Date</label>
+        <input type="date" id="txEditDate">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Animal type (optional)</label>
+        <select id="txEditLivestockType">
+          <option value="">Not animal-related</option>
+          <option value="chicken">Chicken</option>
+          <option value="goat">Goat</option>
+          <option value="cow">Cow</option>
+        </select>
+      </div>
+      <div>
+        <label id="txEditQuantityLabel" style="display:none;">Pieces</label>
+        <input type="number" id="txEditQuantity" min="1" style="display:none;">
+      </div>
+    </div>
+    <div class="err" id="txEditErr"></div>
+    <button class="btn" id="saveTxEditBtn">Save changes</button>
+  </div>
+</div>
+
+<!-- Edit debt modal -->
+<div id="debtEditModal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Edit debt</h2>
+      <button class="del" id="closeDebtEditBtn">Close</button>
+    </div>
+    <p class="note" id="debtEditSettledNote" style="display:none;">This debt is settled &mdash; amount, direction, and animal details are locked. Mark it unsettled first to change those.</p>
+    <div class="seg" id="debtEditTypeSeg">
+      <button type="button" class="on" data-val="owed_to_me">Someone owes me</button>
+      <button type="button" data-val="i_owe">I owe someone</button>
+    </div>
+    <label>Person's name</label>
+    <input type="text" id="debtEditPerson">
+    <label id="debtEditPhoneLabel">Their phone number</label>
+    <input type="text" id="debtEditPhone" placeholder="07XX XXX XXX">
+    <label>Amount</label>
+    <input type="number" id="debtEditAmount" min="0">
+    <label>Reason</label>
+    <input type="text" id="debtEditDesc">
+    <div class="row">
+      <div>
+        <label>Animal type (optional)</label>
+        <select id="debtEditLivestockType">
+          <option value="">Not animal-related</option>
+          <option value="chicken">Chicken</option>
+          <option value="goat">Goat</option>
+          <option value="cow">Cow</option>
+        </select>
+      </div>
+      <div>
+        <label id="debtEditQuantityLabel" style="display:none;">Pieces</label>
+        <input type="number" id="debtEditQuantity" min="1" style="display:none;">
+      </div>
+    </div>
+    <label>Due date (optional)</label>
+    <input type="date" id="debtEditDue">
+    <div class="err" id="debtEditErr"></div>
+    <button class="btn" id="saveDebtEditBtn">Save changes</button>
   </div>
 </div>
 

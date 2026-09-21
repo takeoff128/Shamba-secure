@@ -148,6 +148,7 @@ async function enterApp(){
   document.getElementById('userLabel').textContent = me.name + ' \u00b7 ' + (me.role === 'owner' ? 'Owner' : 'Worker');
   document.getElementById('addWorkerCard').style.display = me.role === 'owner' ? 'block' : 'none';
   document.getElementById('farmSettingsCard').style.display = me.role === 'owner' ? 'block' : 'none';
+  document.getElementById('clearTxBtn').style.display = me.role === 'owner' ? 'inline-block' : 'none';
 
   const banner = document.getElementById('verifyBanner');
   if (!me.emailVerified && me.email){
@@ -306,6 +307,21 @@ async function deleteTx(id){
   await api('/transactions/'+id, { method:'DELETE' });
   await loadAll();
 }
+
+document.getElementById('clearTxBtn').addEventListener('click', async ()=>{
+  const count = state.tx.length;
+  if (count === 0){ showToast('No transactions to clear'); return; }
+  const confirmed = confirm(
+    `Delete all ${count} transaction${count === 1 ? '' : 's'} for this farm? ` +
+    `This can't be undone. Any debt marked settled by one of these transactions will revert to unsettled.`
+  );
+  if (!confirmed) return;
+  try{
+    const res = await api('/transactions', { method:'DELETE' });
+    showToast(`Cleared ${res.deleted} transaction${res.deleted === 1 ? '' : 's'}`);
+    await loadAll();
+  }catch(e){ showToast(e.message); }
+});
 
 function renderAnimalSalesSummary(){
   const el = document.getElementById('animalSalesSummary');
@@ -854,6 +870,7 @@ function renderTx(){
       <div><div class="name">${escapeHtml(t.description)}</div><div class="meta">${escapeHtml(t.category)} &middot; ${t.tx_date}${animalNote}</div></div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="amt ${t.type==='income'?'plus':'minus'}">${t.type==='income'?'+':'-'}${fmtMoney(t.amount)}</div>
+        <button class="del" style="color:var(--leaf-700)" onclick="openTxEditModal(${t.id})">Edit</button>
         ${removeBtn(`deleteTx(${t.id})`)}
       </div>
     </div>`;
@@ -877,6 +894,7 @@ function renderDebts(){
     </div>
     <div style="display:flex;gap:14px;justify-content:flex-end;margin:-6px 0 8px;">
       <button class="del" style="color:var(--leaf-700)" onclick="toggleSettle(${d.id})">${d.settled?'Mark unsettled':'Mark settled'}</button>
+      <button class="del" style="color:var(--leaf-700)" onclick="openDebtEditModal(${d.id})">Edit</button>
       ${removeBtn(`deleteDebt(${d.id})`)}
     </div>
   `;
@@ -898,3 +916,158 @@ function renderAnimals(){
       </div>
     </div>`).join('');
 }
+
+// ---------------- EDIT TRANSACTION ----------------
+let txEditType = 'income';
+let txEditId = null;
+
+document.querySelectorAll('#txEditTypeSeg button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('#txEditTypeSeg button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); txEditType = b.dataset.val;
+  });
+});
+document.getElementById('txEditLivestockType').addEventListener('change', ()=>{
+  const show = document.getElementById('txEditLivestockType').value !== '';
+  document.getElementById('txEditQuantityLabel').style.display = show ? 'block' : 'none';
+  document.getElementById('txEditQuantity').style.display = show ? 'block' : 'none';
+});
+
+function openTxEditModal(id){
+  const t = state.tx.find(x=>x.id===id);
+  if (!t) return;
+  txEditId = id;
+  txEditType = t.type;
+  document.querySelectorAll('#txEditTypeSeg button').forEach(b=>b.classList.toggle('on', b.dataset.val === t.type));
+  document.getElementById('txEditAmount').value = t.amount;
+  document.getElementById('txEditDesc').value = t.description || '';
+  document.getElementById('txEditCategory').value = t.category || 'Other';
+  document.getElementById('txEditDate').value = t.tx_date;
+  document.getElementById('txEditLivestockType').value = t.livestock_type || '';
+  const showQty = !!t.livestock_type;
+  document.getElementById('txEditQuantityLabel').style.display = showQty ? 'block' : 'none';
+  document.getElementById('txEditQuantity').style.display = showQty ? 'block' : 'none';
+  document.getElementById('txEditQuantity').value = t.quantity || '';
+  document.getElementById('txEditErr').textContent = '';
+  document.getElementById('txEditModal').style.display = 'flex';
+}
+function closeTxEditModal(){
+  document.getElementById('txEditModal').style.display = 'none';
+  txEditId = null;
+}
+document.getElementById('closeTxEditBtn').addEventListener('click', closeTxEditModal);
+
+document.getElementById('saveTxEditBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('txEditErr'); err.textContent = '';
+  const amount = parseFloat(document.getElementById('txEditAmount').value);
+  const description = document.getElementById('txEditDesc').value.trim();
+  const category = document.getElementById('txEditCategory').value;
+  const tx_date = document.getElementById('txEditDate').value;
+  const livestock_type = document.getElementById('txEditLivestockType').value || null;
+  const quantityRaw = document.getElementById('txEditQuantity').value;
+  if (!amount || amount <= 0){ err.textContent = 'Enter an amount first.'; return; }
+  if (!description){ err.textContent = 'Add a short description.'; return; }
+  if (livestock_type && (!quantityRaw || parseInt(quantityRaw,10) <= 0)){ err.textContent = 'Enter how many pieces.'; return; }
+  try{
+    await api('/transactions/'+txEditId, { method:'PATCH', body:{
+      type: txEditType, amount, description, category, tx_date,
+      livestock_type, quantity: livestock_type ? quantityRaw : null
+    }});
+    showToast('Transaction updated');
+    closeTxEditModal();
+    await loadAll();
+  }catch(e){ err.textContent = e.message; }
+});
+
+// ---------------- EDIT DEBT ----------------
+let debtEditDirection = 'owed_to_me';
+let debtEditId = null;
+
+document.querySelectorAll('#debtEditTypeSeg button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    if (b.disabled) return;
+    document.querySelectorAll('#debtEditTypeSeg button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); debtEditDirection = b.dataset.val;
+    const showPhone = debtEditDirection === 'owed_to_me';
+    document.getElementById('debtEditPhoneLabel').style.display = showPhone ? 'block' : 'none';
+    document.getElementById('debtEditPhone').style.display = showPhone ? 'block' : 'none';
+  });
+});
+document.getElementById('debtEditLivestockType').addEventListener('change', ()=>{
+  const show = document.getElementById('debtEditLivestockType').value !== '';
+  document.getElementById('debtEditQuantityLabel').style.display = show ? 'block' : 'none';
+  document.getElementById('debtEditQuantity').style.display = show ? 'block' : 'none';
+});
+
+function openDebtEditModal(id){
+  const d = state.debts.find(x=>x.id===id);
+  if (!d) return;
+  debtEditId = id;
+  debtEditDirection = d.direction;
+
+  const financialLocked = !!d.settled;
+  document.getElementById('debtEditSettledNote').style.display = financialLocked ? 'block' : 'none';
+  document.querySelectorAll('#debtEditTypeSeg button').forEach(b=>{
+    b.classList.toggle('on', b.dataset.val === d.direction);
+    b.disabled = financialLocked;
+    b.style.opacity = financialLocked ? '0.5' : '1';
+    b.style.cursor = financialLocked ? 'not-allowed' : 'pointer';
+  });
+  document.getElementById('debtEditAmount').disabled = financialLocked;
+  document.getElementById('debtEditLivestockType').disabled = financialLocked;
+  document.getElementById('debtEditQuantity').disabled = financialLocked;
+
+  document.getElementById('debtEditPerson').value = d.person;
+  document.getElementById('debtEditPhone').value = d.phone || '';
+  const showPhone = d.direction === 'owed_to_me';
+  document.getElementById('debtEditPhoneLabel').style.display = showPhone ? 'block' : 'none';
+  document.getElementById('debtEditPhone').style.display = showPhone ? 'block' : 'none';
+  document.getElementById('debtEditAmount').value = d.amount;
+  document.getElementById('debtEditDesc').value = d.description || '';
+  document.getElementById('debtEditLivestockType').value = d.livestock_type || '';
+  const showQty = !!d.livestock_type;
+  document.getElementById('debtEditQuantityLabel').style.display = showQty ? 'block' : 'none';
+  document.getElementById('debtEditQuantity').style.display = showQty ? 'block' : 'none';
+  document.getElementById('debtEditQuantity').value = d.quantity || '';
+  document.getElementById('debtEditDue').value = d.due_date || '';
+  document.getElementById('debtEditErr').textContent = '';
+  document.getElementById('debtEditModal').style.display = 'flex';
+}
+function closeDebtEditModal(){
+  document.getElementById('debtEditModal').style.display = 'none';
+  debtEditId = null;
+}
+document.getElementById('closeDebtEditBtn').addEventListener('click', closeDebtEditModal);
+
+document.getElementById('saveDebtEditBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('debtEditErr'); err.textContent = '';
+  const debt = state.debts.find(x=>x.id===debtEditId);
+  const financialLocked = !!debt.settled;
+  const person = document.getElementById('debtEditPerson').value.trim();
+  const phone = document.getElementById('debtEditPhone').value.trim();
+  const description = document.getElementById('debtEditDesc').value.trim();
+  const due_date = document.getElementById('debtEditDue').value || null;
+  if (!person){ err.textContent = 'Enter a name first.'; return; }
+
+  const body = { person, description, due_date };
+  body.phone = debtEditDirection === 'owed_to_me' ? (phone || null) : null;
+
+  if (!financialLocked){
+    const amount = parseFloat(document.getElementById('debtEditAmount').value);
+    const livestock_type = document.getElementById('debtEditLivestockType').value || null;
+    const quantityRaw = document.getElementById('debtEditQuantity').value;
+    if (!amount || amount <= 0){ err.textContent = 'Enter an amount first.'; return; }
+    if (livestock_type && (!quantityRaw || parseInt(quantityRaw,10) <= 0)){ err.textContent = 'Enter how many pieces.'; return; }
+    body.direction = debtEditDirection;
+    body.amount = amount;
+    body.livestock_type = livestock_type;
+    body.quantity = livestock_type ? quantityRaw : null;
+  }
+
+  try{
+    await api('/debts/'+debtEditId, { method:'PATCH', body });
+    showToast('Debt updated');
+    closeDebtEditModal();
+    await loadAll();
+  }catch(e){ err.textContent = e.message; }
+});

@@ -306,9 +306,76 @@ app.post('/api/transactions', requireAuth, (req, res) => {
   res.json({ id: info.lastInsertRowid });
 });
 
+app.patch('/api/transactions/:id', requireAuth, (req, res) => {
+  const existing = db.prepare('SELECT * FROM transactions WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
+  if (!existing) return res.status(404).json({ error: 'Transaction not found.' });
+
+  const { type, amount, category, description, tx_date, livestock_type, quantity } = req.body || {};
+
+  if (type !== undefined && !['income', 'expense'].includes(type)) return badRequest(res, 'Invalid transaction type.');
+  let amt = existing.amount;
+  if (amount !== undefined) {
+    amt = parseFloat(amount);
+    if (!amt || amt <= 0) return badRequest(res, 'Enter a valid amount.');
+  }
+  if (tx_date !== undefined && !tx_date) return badRequest(res, 'Date is required.');
+
+  let animalType = existing.livestock_type;
+  if (livestock_type !== undefined) {
+    if (livestock_type === null || livestock_type === '') {
+      animalType = null;
+    } else if (!['chicken', 'goat', 'cow'].includes(livestock_type)) {
+      return badRequest(res, 'Invalid animal type.');
+    } else {
+      animalType = livestock_type;
+    }
+  }
+  let qty = existing.quantity;
+  if (quantity !== undefined) {
+    if (quantity === null || quantity === '') {
+      qty = null;
+    } else {
+      qty = parseInt(quantity, 10);
+      if (!qty || qty <= 0) return badRequest(res, 'Enter a valid number of pieces.');
+    }
+  }
+
+  db.prepare(
+    'UPDATE transactions SET type=?, amount=?, category=?, description=?, tx_date=?, livestock_type=?, quantity=? WHERE id=?'
+  ).run(
+    type !== undefined ? type : existing.type,
+    amt,
+    category !== undefined ? category : existing.category,
+    description !== undefined ? description : existing.description,
+    tx_date !== undefined ? tx_date : existing.tx_date,
+    animalType,
+    qty,
+    existing.id
+  );
+
+  res.json({ ok: true });
+});
+
 app.delete('/api/transactions/:id', requireAuth, requireOwner, (req, res) => {
   db.prepare('DELETE FROM transactions WHERE id = ? AND farm_id = ?').run(req.params.id, req.user.farmId);
   res.json({ ok: true });
+});
+
+// Wipes every transaction for the farm in one go, instead of one-by-one.
+// Any debt that was marked settled via one of these transactions reverts to
+// unsettled, since the record backing that settlement no longer exists —
+// keeps the ledger internally consistent rather than leaving a phantom
+// "settled" status with nothing behind it.
+app.delete('/api/transactions', requireAuth, requireOwner, (req, res) => {
+  const farmId = req.user.farmId;
+  const wipe = db.transaction(() => {
+    db.prepare('UPDATE debts SET settled = 0, settlement_tx_id = NULL WHERE farm_id = ? AND settlement_tx_id IS NOT NULL')
+      .run(farmId);
+    const info = db.prepare('DELETE FROM transactions WHERE farm_id = ?').run(farmId);
+    return info.changes;
+  });
+  const deleted = wipe();
+  res.json({ ok: true, deleted });
 });
 
 // ---------------- DEBTS ----------------
@@ -350,6 +417,73 @@ app.post('/api/debts', requireAuth, (req, res) => {
   }
 
   res.json({ id: info.lastInsertRowid });
+});
+
+app.patch('/api/debts/:id', requireAuth, (req, res) => {
+  const existing = db.prepare('SELECT * FROM debts WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
+  if (!existing) return res.status(404).json({ error: 'Debt not found.' });
+
+  const { direction, person, phone, amount, description, due_date, livestock_type, quantity } = req.body || {};
+
+  // Once a debt is settled, its amount/direction/animal details are already
+  // baked into a real transaction on the ledger. Changing them here would
+  // silently desync the two — require un-settling first instead.
+  const financialFieldsTouched = [direction, amount, livestock_type, quantity].some(v => v !== undefined);
+  if (existing.settled && financialFieldsTouched) {
+    return badRequest(res, "This debt is settled — un-settle it first to change the amount, direction, or animal details.");
+  }
+
+  if (direction !== undefined && !['owed_to_me', 'i_owe'].includes(direction)) return badRequest(res, 'Invalid debt direction.');
+  if (person !== undefined && !person) return badRequest(res, 'Enter a name.');
+  let amt = existing.amount;
+  if (amount !== undefined) {
+    amt = parseFloat(amount);
+    if (!amt || amt <= 0) return badRequest(res, 'Enter a valid amount.');
+  }
+
+  let animalType = existing.livestock_type;
+  if (livestock_type !== undefined) {
+    if (livestock_type === null || livestock_type === '') {
+      animalType = null;
+    } else if (!['chicken', 'goat', 'cow'].includes(livestock_type)) {
+      return badRequest(res, 'Invalid animal type.');
+    } else {
+      animalType = livestock_type;
+    }
+  }
+  let qty = existing.quantity;
+  if (quantity !== undefined) {
+    if (quantity === null || quantity === '') {
+      qty = null;
+    } else {
+      qty = parseInt(quantity, 10);
+      if (!qty || qty <= 0) return badRequest(res, 'Enter a valid number of pieces.');
+    }
+  }
+
+  const newDirection = direction !== undefined ? direction : existing.direction;
+  const newPerson = person !== undefined ? person : existing.person;
+  const newPhone = phone !== undefined ? (phone || null) : existing.phone;
+  const newDescription = description !== undefined ? description : existing.description;
+  const newDueDate = due_date !== undefined ? (due_date || null) : existing.due_date;
+
+  db.prepare(
+    'UPDATE debts SET direction=?, person=?, phone=?, amount=?, description=?, livestock_type=?, quantity=?, due_date=? WHERE id=?'
+  ).run(newDirection, newPerson, newPhone, amt, newDescription, animalType, qty, newDueDate, existing.id);
+
+  // The due date (or the details inside the reminder message) may have
+  // changed — clear out the old not-yet-sent reminder for this debt and
+  // regenerate it, so a pending reminder never fires with stale info.
+  db.prepare("DELETE FROM reminders WHERE farm_id = ? AND subject_type = 'debt' AND subject_id = ? AND sent_at IS NULL")
+    .run(req.user.farmId, existing.id);
+  if (newDueDate && !existing.settled) {
+    createDebtReminder(
+      { farm_id: req.user.farmId, id: existing.id, amount: amt, direction: newDirection, person: newPerson, phone: newPhone, due_date: newDueDate },
+      req.user.userId
+    );
+  }
+
+  res.json({ ok: true });
 });
 
 app.patch('/api/debts/:id/settle', requireAuth, (req, res) => {

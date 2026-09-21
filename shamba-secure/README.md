@@ -106,6 +106,37 @@ the dashboard's Total in/Net balance still correctly waits for (via
 settlement) before counting. Settling the debt doesn't add the pieces a
 second time; it's the same sale, just now paid for.
 
+**Clearing all transactions at once:** the owner gets a "Clear all" button
+on the Recent Transactions card, instead of deleting entries one by one.
+It asks for confirmation, showing exactly how many transactions will be
+removed. If any of those transactions came from settling a debt, that
+debt automatically reverts to unsettled — the ledger never ends up with
+a debt marked "settled" pointing at a transaction that no longer exists.
+Workers never see this button, and the backend rejects the request even
+if they try to call it directly.
+
+## Editing transactions and debts
+
+Every transaction and debt now has an **Edit** button, opening a form
+pre-filled with its current values — no more delete-and-retype to fix a
+typo or a wrong amount.
+
+**Transactions** are fully editable: type, amount, description, category,
+date, and animal tagging can all change freely.
+
+**Debts** are editable too, with one safeguard: once a debt is marked
+**settled**, its amount, direction, and animal details are locked (shown
+greyed out in the edit form) because those numbers are already reflected
+in a real transaction on the ledger — changing them here would silently
+desync the two. Mark it unsettled first if the amount genuinely needs to
+change. Person, phone, reason, and due date stay editable regardless of
+settled status.
+
+**Editing a debt's due date or amount also refreshes its reminder** —
+the old, not-yet-sent reminder is removed and a new one is generated with
+the updated details, so a pending SMS never goes out with stale
+information from before the edit.
+
 ## Debt ledger
 
 Marking a debt "settled" now does real bookkeeping, not just a status
