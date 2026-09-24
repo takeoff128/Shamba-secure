@@ -913,11 +913,13 @@ function debtRowHtml(d){
 const HISTORY_PREVIEW_LIMIT = 10;
 
 function goToHistory(section){
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab === 'history'));
-  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id === 'history'));
+  document.getElementById('historyModal').style.display = 'flex';
   const card = document.getElementById(section === 'debts' ? 'debtHistoryCard' : 'txHistoryCard');
   if (card) card.scrollIntoView({ behavior:'smooth', block:'start' });
 }
+document.getElementById('closeHistoryBtn').addEventListener('click', ()=>{
+  document.getElementById('historyModal').style.display = 'none';
+});
 
 function renderTx(){
   const el = document.getElementById('txList');

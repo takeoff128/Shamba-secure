@@ -108,7 +108,6 @@
       <button class="tab-btn" data-tab="livestock">Livestock</button>
       <button class="tab-btn" data-tab="broilers">Poultry</button>
       <button class="tab-btn" data-tab="reminders">Reminders</button>
-      <button class="tab-btn" data-tab="history">History</button>
       <button class="tab-btn" data-tab="team">Team</button>
     </nav>
 
@@ -317,20 +316,6 @@
       </div>
     </section>
 
-    <!-- HISTORY -->
-    <section class="view" id="history">
-      <div class="card" id="txHistoryCard">
-        <h2>Transaction history</h2>
-        <p class="note">Every transaction ever recorded for this farm, most recent first.</p>
-        <div class="list" id="txHistoryList"></div>
-      </div>
-      <div class="card" id="debtHistoryCard">
-        <h2>Debt history</h2>
-        <p class="note">Every debt ever recorded for this farm, including settled ones.</p>
-        <div class="list" id="debtHistoryList"></div>
-      </div>
-    </section>
-
     <!-- TEAM -->
     <section class="view" id="team">
       <div class="card" id="farmSettingsCard">
@@ -359,6 +344,26 @@
         <div class="list" id="userList"></div>
       </div>
     </section>
+  </div>
+</div>
+
+<!-- History modal (opened from "View all" links, not part of main navigation) -->
+<div id="historyModal" class="modal-backdrop" style="display:none">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-head">
+      <h2>History</h2>
+      <button class="del" id="closeHistoryBtn">Close</button>
+    </div>
+    <div id="txHistoryCard" style="margin-top:14px;">
+      <h3>Transaction history</h3>
+      <p class="note">Every transaction ever recorded for this farm, most recent first.</p>
+      <div class="list" id="txHistoryList"></div>
+    </div>
+    <div id="debtHistoryCard" style="margin-top:22px;">
+      <h3>Debt history</h3>
+      <p class="note">Every debt ever recorded for this farm, including settled ones.</p>
+      <div class="list" id="debtHistoryList"></div>
+    </div>
   </div>
 </div>
 
