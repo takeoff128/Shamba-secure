@@ -78,6 +78,7 @@ document.querySelectorAll('#authModeSeg button').forEach(b=>{
     document.getElementById('loginForm').style.display = b.dataset.val==='login' ? 'block':'none';
     document.getElementById('registerForm').style.display = b.dataset.val==='register' ? 'block':'none';
     document.getElementById('forgotForm').style.display = 'none';
+    if (b.dataset.val !== 'register') resetRegCodeStep();
   });
 });
 
@@ -116,6 +117,21 @@ document.getElementById('loginBtn').addEventListener('click', async ()=>{
   }catch(e){ err.textContent = e.message; }
 });
 
+// Registration now happens in two clicks on the same form: the first click
+// sends a verification code to the entered email and reveals the code
+// field; the second click (with the code filled in) actually creates the
+// account. regCodeSent/regCodeSentForEmail track which phase we're in.
+let regCodeSent = false;
+let regCodeSentForEmail = '';
+
+function resetRegCodeStep(){
+  regCodeSent = false;
+  regCodeSentForEmail = '';
+  document.getElementById('regCodeStep').style.display = 'none';
+  document.getElementById('regCode').value = '';
+  document.getElementById('regBtn').textContent = 'Create farm account';
+}
+
 document.getElementById('regBtn').addEventListener('click', async ()=>{
   const farmName = document.getElementById('regFarmName').value.trim();
   const name = document.getElementById('regName').value.trim();
@@ -126,10 +142,46 @@ document.getElementById('regBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('regErr');
   err.textContent = '';
   if (!farmName || !name || !phone || !email || !password){ err.textContent = 'Fill in every field.'; return; }
+
+  if (!regCodeSent || regCodeSentForEmail !== email){
+    try{
+      await api('/register/send-code', { method:'POST', body:{ email, farmName } });
+      regCodeSent = true;
+      regCodeSentForEmail = email;
+      document.getElementById('regCodeEmailLabel').textContent = email;
+      document.getElementById('regCodeStep').style.display = 'block';
+      document.getElementById('regBtn').textContent = 'Verify & create account';
+      showToast('Verification code sent to your email');
+    }catch(e){ err.textContent = e.message; }
+    return;
+  }
+
+  const code = document.getElementById('regCode').value.trim();
+  if (!code){ err.textContent = 'Enter the code from your email.'; return; }
   try{
-    await api('/register', { method:'POST', body:{ farmName, name, phone, email, password, currency } });
+    await api('/register', { method:'POST', body:{ farmName, name, phone, email, password, currency, code } });
+    resetRegCodeStep();
     await enterApp();
   }catch(e){ err.textContent = e.message; }
+});
+
+document.getElementById('regResendCodeBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('regErr'); err.textContent = '';
+  const farmName = document.getElementById('regFarmName').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  if (!email){ err.textContent = 'Enter your email address first.'; return; }
+  try{
+    await api('/register/send-code', { method:'POST', body:{ email, farmName } });
+    showToast('A new code has been sent.');
+  }catch(e){ err.textContent = e.message; }
+});
+
+// If they change the email after a code's been sent, that code is now for
+// the wrong address — fall back to step 1 so a fresh one gets sent.
+document.getElementById('regEmail').addEventListener('input', ()=>{
+  if (regCodeSent && document.getElementById('regEmail').value.trim() !== regCodeSentForEmail){
+    resetRegCodeStep();
+  }
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async ()=>{
@@ -259,8 +311,23 @@ async function loadAll(){
 }
 function renderAll(){
   renderDash(); renderTx(); renderDebts(); renderAnimals(); renderUsers(); renderReminders();
-  renderScheduleRef(); renderLots(); renderAnimalSalesSummary();
+  renderScheduleRef(); renderLots(); renderAnimalSalesSummary(); renderLotSelects();
   renderTxHistory(); renderDebtHistory();
+}
+
+// Fills the "Lot (optional)" dropdowns on the transaction/debt add & edit
+// forms from state.lots, keeping whatever was already selected if it's
+// still a valid choice.
+function renderLotSelects(){
+  const ids = ['txLot', 'txEditLot', 'debtLot', 'debtEditLot'];
+  const options = state.lots.map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const current = el.value;
+    el.innerHTML = '<option value="">Not lot-specific</option>' + options;
+    if (state.lots.some(l => String(l.id) === current)) el.value = current;
+  });
 }
 
 // ---------------- TRANSACTIONS ----------------
@@ -286,13 +353,14 @@ document.getElementById('addTxBtn').addEventListener('click', async ()=>{
   const tx_date = document.getElementById('txDate').value || todayStr();
   const livestock_type = document.getElementById('txLivestockType').value || null;
   const quantityRaw = document.getElementById('txQuantity').value;
+  const lot_id = document.getElementById('txLot').value || null;
   if (!amount || amount <= 0){ err.textContent = 'Enter an amount first.'; return; }
   if (!description){ err.textContent = 'Add a short description.'; return; }
   if (livestock_type && (!quantityRaw || parseInt(quantityRaw, 10) <= 0)){ err.textContent = 'Enter how many pieces.'; return; }
   try{
     await api('/transactions', { method:'POST', body:{
       type:txType, amount, category, description, tx_date,
-      livestock_type, quantity: livestock_type ? quantityRaw : null
+      livestock_type, quantity: livestock_type ? quantityRaw : null, lot_id
     }});
     document.getElementById('txAmount').value = '';
     document.getElementById('txDesc').value = '';
@@ -300,6 +368,7 @@ document.getElementById('addTxBtn').addEventListener('click', async ()=>{
     document.getElementById('txQuantity').value = '';
     document.getElementById('txQuantityLabel').style.display = 'none';
     document.getElementById('txQuantity').style.display = 'none';
+    document.getElementById('txLot').value = '';
     showToast('Transaction saved');
     await loadAll();
   }catch(e){ err.textContent = e.message; }
@@ -392,6 +461,7 @@ document.getElementById('pickContactBtn').addEventListener('click', async ()=>{
 });
 
 let debtDirection = 'owed_to_me';
+document.getElementById('debtIncurred').value = todayStr();
 document.querySelectorAll('#debtTypeSeg button').forEach(b=>{
   b.addEventListener('click', ()=>{
     document.querySelectorAll('#debtTypeSeg button').forEach(x=>x.classList.remove('on'));
@@ -413,9 +483,11 @@ document.getElementById('addDebtBtn').addEventListener('click', async ()=>{
   const phone = document.getElementById('debtPhone').value.trim();
   const amount = parseFloat(document.getElementById('debtAmount').value);
   const description = document.getElementById('debtDesc').value.trim();
+  const incurred_date = document.getElementById('debtIncurred').value || todayStr();
   const due_date = document.getElementById('debtDue').value || null;
   const livestock_type = document.getElementById('debtLivestockType').value || null;
   const quantityRaw = document.getElementById('debtQuantity').value;
+  const lot_id = document.getElementById('debtLot').value || null;
   if (!person){ err.textContent = 'Enter a name first.'; return; }
   if (!amount || amount <= 0){ err.textContent = 'Enter an amount first.'; return; }
   if (livestock_type && (!quantityRaw || parseInt(quantityRaw, 10) <= 0)){ err.textContent = 'Enter how many pieces.'; return; }
@@ -423,18 +495,20 @@ document.getElementById('addDebtBtn').addEventListener('click', async ()=>{
     await api('/debts', { method:'POST', body:{
       direction:debtDirection, person,
       phone: debtDirection === 'owed_to_me' ? (phone || null) : null,
-      amount, description, due_date,
-      livestock_type, quantity: livestock_type ? quantityRaw : null
+      amount, description, incurred_date, due_date,
+      livestock_type, quantity: livestock_type ? quantityRaw : null, lot_id
     }});
     document.getElementById('debtPerson').value = '';
     document.getElementById('debtPhone').value = '';
     document.getElementById('debtAmount').value = '';
     document.getElementById('debtDesc').value = '';
+    document.getElementById('debtIncurred').value = todayStr();
     document.getElementById('debtDue').value = '';
     document.getElementById('debtLivestockType').value = '';
     document.getElementById('debtQuantity').value = '';
     document.getElementById('debtQuantityLabel').style.display = 'none';
     document.getElementById('debtQuantity').style.display = 'none';
+    document.getElementById('debtLot').value = '';
     showToast('Debt saved');
     await loadAll();
   }catch(e){ err.textContent = e.message; }
@@ -606,6 +680,40 @@ async function deleteLot(id, evt){
   await loadAll();
 }
 
+function computeLotFinances(lot){
+  // Same double-counting rule as "Sales by animal type": a cash transaction
+  // auto-created by settling a debt is excluded here since the underlying
+  // debt below is already counted — a sale counts once, the moment it's
+  // recorded, whether it was ever on credit or not.
+  const cashTx = state.tx.filter(t => t.lot_id === lot.id && t.category !== 'Debt settlement');
+  const creditDebts = state.debts.filter(d => d.lot_id === lot.id);
+  const income = cashTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0)
+    + creditDebts.filter(d=>d.direction==='owed_to_me').reduce((s,d)=>s+d.amount,0);
+  const expense = cashTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0)
+    + creditDebts.filter(d=>d.direction==='i_owe').reduce((s,d)=>s+d.amount,0);
+  const piecesSold = cashTx.filter(t=>t.type==='income').reduce((s,t)=>s+(t.quantity||0),0)
+    + creditDebts.filter(d=>d.direction==='owed_to_me').reduce((s,d)=>s+(d.quantity||0),0);
+  const piecesBought = cashTx.filter(t=>t.type==='expense').reduce((s,t)=>s+(t.quantity||0),0)
+    + creditDebts.filter(d=>d.direction==='i_owe').reduce((s,d)=>s+(d.quantity||0),0);
+  return { income, expense, net: income - expense, piecesSold, piecesBought };
+}
+
+function renderLotFinances(lot){
+  const f = computeLotFinances(lot);
+  const stats = [
+    { label:'Income', value: fmtMoney(f.income) },
+    { label:'Expenses', value: fmtMoney(f.expense) },
+    { label:'Net', value: fmtMoney(f.net) },
+    { label:'Birds sold', value: String(f.piecesSold) }
+  ];
+  if (f.piecesBought > 0) stats.push({ label:'Birds bought', value: String(f.piecesBought) });
+  document.getElementById('modalLotFinances').innerHTML = stats.map(s=>`
+    <div class="stat">
+      <div class="label">${s.label}</div>
+      <div class="value">${s.value}</div>
+    </div>`).join('');
+}
+
 function openLotModal(id){
   state.currentLotId = id;
   const lot = state.lots.find(l=>l.id===id);
@@ -615,6 +723,7 @@ function openLotModal(id){
   document.getElementById('modalLotTitle').textContent = lot.name;
   document.getElementById('modalLotMeta').textContent =
     [typeLabel, remaining != null ? `${remaining} of ${lot.quantity} birds remaining` : null, 'started ' + lot.start_date].filter(Boolean).join(' \u00b7 ');
+  renderLotFinances(lot);
   document.getElementById('modalLotStatus').value = lot.status;
   document.getElementById('lotRemDate').value = todayStr();
   document.getElementById('mortDate').value = todayStr();
@@ -879,9 +988,11 @@ function renderDash(){
 function txRowHtml(t){
   const animalLabels = { chicken: 'chicken', goat: 'goats', cow: 'cows' };
   const animalNote = t.livestock_type ? ` &middot; ${t.quantity} ${animalLabels[t.livestock_type] || t.livestock_type}` : '';
+  const lot = t.lot_id ? state.lots.find(l=>l.id===t.lot_id) : null;
+  const lotNote = lot ? ` &middot; ${escapeHtml(lot.name)}` : '';
   return `
     <div class="item">
-      <div><div class="name">${escapeHtml(t.description)}</div><div class="meta">${escapeHtml(t.category)} &middot; ${t.tx_date}${animalNote}</div></div>
+      <div><div class="name">${escapeHtml(t.description)}</div><div class="meta">${escapeHtml(t.category)} &middot; ${t.tx_date}${animalNote}${lotNote}</div></div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="amt ${t.type==='income'?'plus':'minus'}">${t.type==='income'?'+':'-'}${fmtMoney(t.amount)}</div>
         <button class="del" style="color:var(--leaf-700)" onclick="openTxEditModal(${t.id})">Edit</button>
@@ -893,10 +1004,12 @@ function txRowHtml(t){
 function debtRowHtml(d){
   const animalLabels = { chicken: 'chicken', goat: 'goats', cow: 'cows' };
   const animalNote = d.livestock_type ? ` &middot; ${d.quantity} ${animalLabels[d.livestock_type] || d.livestock_type}` : '';
+  const lot = d.lot_id ? state.lots.find(l=>l.id===d.lot_id) : null;
+  const lotNote = lot ? ` &middot; ${escapeHtml(lot.name)}` : '';
   return `
     <div class="item">
       <div><div class="name">${escapeHtml(d.person)}${d.phone ? ' <span class="meta">(' + escapeHtml(d.phone) + ')</span>' : ''}</div>
-        <div class="meta">${escapeHtml(d.description||'')}${animalNote} ${d.due_date ? '&middot; due '+d.due_date : ''}</div></div>
+        <div class="meta">${escapeHtml(d.description||'')}${animalNote}${lotNote} ${d.due_date ? '&middot; due '+d.due_date : ''}</div></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span class="pill ${d.settled ? 'settled' : (d.direction==='owed_to_me'?'owe-me':'i-owe')}">${d.settled ? 'Settled' : (d.direction==='owed_to_me' ? 'Owes you' : 'You owe')}</span>
         <div class="amt">${fmtMoney(d.amount)}</div>
@@ -1010,6 +1123,7 @@ function openTxEditModal(id){
   document.getElementById('txEditQuantityLabel').style.display = showQty ? 'block' : 'none';
   document.getElementById('txEditQuantity').style.display = showQty ? 'block' : 'none';
   document.getElementById('txEditQuantity').value = t.quantity || '';
+  document.getElementById('txEditLot').value = t.lot_id ? String(t.lot_id) : '';
   document.getElementById('txEditErr').textContent = '';
   document.getElementById('txEditModal').style.display = 'flex';
 }
@@ -1027,13 +1141,14 @@ document.getElementById('saveTxEditBtn').addEventListener('click', async ()=>{
   const tx_date = document.getElementById('txEditDate').value;
   const livestock_type = document.getElementById('txEditLivestockType').value || null;
   const quantityRaw = document.getElementById('txEditQuantity').value;
+  const lot_id = document.getElementById('txEditLot').value || null;
   if (!amount || amount <= 0){ err.textContent = 'Enter an amount first.'; return; }
   if (!description){ err.textContent = 'Add a short description.'; return; }
   if (livestock_type && (!quantityRaw || parseInt(quantityRaw,10) <= 0)){ err.textContent = 'Enter how many pieces.'; return; }
   try{
     await api('/transactions/'+txEditId, { method:'PATCH', body:{
       type: txEditType, amount, description, category, tx_date,
-      livestock_type, quantity: livestock_type ? quantityRaw : null
+      livestock_type, quantity: livestock_type ? quantityRaw : null, lot_id
     }});
     showToast('Transaction updated');
     closeTxEditModal();
@@ -1091,6 +1206,8 @@ function openDebtEditModal(id){
   document.getElementById('debtEditQuantityLabel').style.display = showQty ? 'block' : 'none';
   document.getElementById('debtEditQuantity').style.display = showQty ? 'block' : 'none';
   document.getElementById('debtEditQuantity').value = d.quantity || '';
+  document.getElementById('debtEditLot').value = d.lot_id ? String(d.lot_id) : '';
+  document.getElementById('debtEditIncurred').value = d.incurred_date || '';
   document.getElementById('debtEditDue').value = d.due_date || '';
   document.getElementById('debtEditErr').textContent = '';
   document.getElementById('debtEditModal').style.display = 'flex';
@@ -1108,10 +1225,12 @@ document.getElementById('saveDebtEditBtn').addEventListener('click', async ()=>{
   const person = document.getElementById('debtEditPerson').value.trim();
   const phone = document.getElementById('debtEditPhone').value.trim();
   const description = document.getElementById('debtEditDesc').value.trim();
+  const incurred_date = document.getElementById('debtEditIncurred').value || null;
   const due_date = document.getElementById('debtEditDue').value || null;
+  const lot_id = document.getElementById('debtEditLot').value || null;
   if (!person){ err.textContent = 'Enter a name first.'; return; }
 
-  const body = { person, description, due_date };
+  const body = { person, description, incurred_date, due_date, lot_id };
   body.phone = debtEditDirection === 'owed_to_me' ? (phone || null) : null;
 
   if (!financialLocked){

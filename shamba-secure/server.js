@@ -52,16 +52,51 @@ async function issuePhoneVerificationCode(userId, phone, farmName) {
 
 // ---------------- AUTH ----------------
 
+// Sends a 6-digit code to an email address BEFORE any account exists, so
+// registration can require proof of email ownership as part of the same
+// form. Also used for "resend code" on the registration screen — calling
+// it again with the same email just overwrites the pending code.
+app.post('/api/register/send-code', async (req, res) => {
+  const { email, farmName } = req.body || {};
+  if (!email) return badRequest(res, 'Enter your email address.');
+  if (!/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email address.');
+
+  const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (existingEmail) return badRequest(res, 'That email is already registered.');
+
+  const code = String(crypto.randomInt(100000, 1000000));
+  const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  db.prepare(
+    `INSERT INTO pending_registrations (email, code, code_expires) VALUES (?, ?, ?)
+     ON CONFLICT(email) DO UPDATE SET code = excluded.code, code_expires = excluded.code_expires`
+  ).run(email, code, expires);
+
+  try {
+    await sendVerificationCodeEmail(email, code, farmName || null);
+  } catch (err) {
+    console.error('[email] failed to send pre-registration verification code:', err.message);
+    return res.status(500).json({ error: 'Could not send the verification email. Try again in a moment.' });
+  }
+
+  res.json({ ok: true });
+});
+
 app.post('/api/register', async (req, res) => {
-  const { farmName, name, phone, email, password, currency, country } = req.body || {};
+  const { farmName, name, phone, email, password, currency, country, code } = req.body || {};
   if (!farmName || !name || !phone || !email || !password) return badRequest(res, 'All fields are required.');
   if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
   if (!/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email address.');
+  if (!code) return badRequest(res, 'Enter the verification code sent to your email.');
 
   const existingPhone = db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
   if (existingPhone) return badRequest(res, 'That phone number is already registered.');
   const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (existingEmail) return badRequest(res, 'That email is already registered.');
+
+  const pending = db.prepare('SELECT * FROM pending_registrations WHERE email = ?').get(email);
+  if (!pending) return badRequest(res, 'Send a verification code to this email first.');
+  if (pending.code !== code) return badRequest(res, 'That code is incorrect.');
+  if (new Date(pending.code_expires) < new Date()) return badRequest(res, 'That code has expired. Request a new one.');
 
   const currencyCode = CURRENCIES[currency] ? currency : 'KES';
 
@@ -71,12 +106,15 @@ app.post('/api/register', async (req, res) => {
 
   const hash = bcrypt.hashSync(password, 12);
   const insertUser = db.prepare(
-    'INSERT INTO users (farm_id, name, phone, email, password_hash, role, email_verified, phone_verified) VALUES (?, ?, ?, ?, ?, ?, 0, 0)'
+    // Email is already verified at this point (the code above proves it) —
+    // phone verification still happens after account creation, unchanged.
+    'INSERT INTO users (farm_id, name, phone, email, password_hash, role, email_verified, phone_verified) VALUES (?, ?, ?, ?, ?, ?, 1, 0)'
   );
   const userInfo = insertUser.run(farmId, name, phone, email, hash, 'owner');
 
+  db.prepare('DELETE FROM pending_registrations WHERE email = ?').run(email);
+
   setAuthCookie(res, { userId: userInfo.lastInsertRowid, farmId, name, role: 'owner' });
-  await issueVerificationCode(userInfo.lastInsertRowid, email, farmName);
   await issuePhoneVerificationCode(userInfo.lastInsertRowid, phone, farmName);
   res.json({ ok: true, farmName, name, role: 'owner', currency: currencyCode });
 });
@@ -282,7 +320,7 @@ app.get('/api/transactions', requireAuth, (req, res) => {
 });
 
 app.post('/api/transactions', requireAuth, (req, res) => {
-  const { type, amount, category, description, tx_date, livestock_type, quantity } = req.body || {};
+  const { type, amount, category, description, tx_date, livestock_type, quantity, lot_id } = req.body || {};
   if (!['income', 'expense'].includes(type)) return badRequest(res, 'Invalid transaction type.');
   const amt = parseFloat(amount);
   if (!amt || amt <= 0) return badRequest(res, 'Enter a valid amount.');
@@ -299,9 +337,19 @@ app.post('/api/transactions', requireAuth, (req, res) => {
     if (!qty || qty <= 0) return badRequest(res, 'Enter a valid number of pieces.');
   }
 
+  // Optional — lets a transaction be tied to a specific broiler/layer lot so
+  // its income/expenses can be tracked separately from the farm's finances
+  // as a whole. Must belong to this farm if provided.
+  let lotId = null;
+  if (lot_id !== undefined && lot_id !== null && lot_id !== '') {
+    const lot = db.prepare('SELECT id FROM broiler_lots WHERE id = ? AND farm_id = ?').get(lot_id, req.user.farmId);
+    if (!lot) return badRequest(res, 'That lot was not found.');
+    lotId = lot.id;
+  }
+
   const info = db.prepare(
-    'INSERT INTO transactions (farm_id, user_id, type, amount, category, description, livestock_type, quantity, tx_date) VALUES (?,?,?,?,?,?,?,?,?)'
-  ).run(req.user.farmId, req.user.userId, type, amt, category || 'Other', description || '', animalType, qty, tx_date);
+    'INSERT INTO transactions (farm_id, user_id, type, amount, category, description, livestock_type, quantity, lot_id, tx_date) VALUES (?,?,?,?,?,?,?,?,?,?)'
+  ).run(req.user.farmId, req.user.userId, type, amt, category || 'Other', description || '', animalType, qty, lotId, tx_date);
 
   res.json({ id: info.lastInsertRowid });
 });
@@ -310,7 +358,7 @@ app.patch('/api/transactions/:id', requireAuth, (req, res) => {
   const existing = db.prepare('SELECT * FROM transactions WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
   if (!existing) return res.status(404).json({ error: 'Transaction not found.' });
 
-  const { type, amount, category, description, tx_date, livestock_type, quantity } = req.body || {};
+  const { type, amount, category, description, tx_date, livestock_type, quantity, lot_id } = req.body || {};
 
   if (type !== undefined && !['income', 'expense'].includes(type)) return badRequest(res, 'Invalid transaction type.');
   let amt = existing.amount;
@@ -339,9 +387,19 @@ app.patch('/api/transactions/:id', requireAuth, (req, res) => {
       if (!qty || qty <= 0) return badRequest(res, 'Enter a valid number of pieces.');
     }
   }
+  let lotId = existing.lot_id;
+  if (lot_id !== undefined) {
+    if (lot_id === null || lot_id === '') {
+      lotId = null;
+    } else {
+      const lot = db.prepare('SELECT id FROM broiler_lots WHERE id = ? AND farm_id = ?').get(lot_id, req.user.farmId);
+      if (!lot) return badRequest(res, 'That lot was not found.');
+      lotId = lot.id;
+    }
+  }
 
   db.prepare(
-    'UPDATE transactions SET type=?, amount=?, category=?, description=?, tx_date=?, livestock_type=?, quantity=? WHERE id=?'
+    'UPDATE transactions SET type=?, amount=?, category=?, description=?, tx_date=?, livestock_type=?, quantity=?, lot_id=? WHERE id=?'
   ).run(
     type !== undefined ? type : existing.type,
     amt,
@@ -350,6 +408,7 @@ app.patch('/api/transactions/:id', requireAuth, (req, res) => {
     tx_date !== undefined ? tx_date : existing.tx_date,
     animalType,
     qty,
+    lotId,
     existing.id
   );
 
@@ -388,7 +447,7 @@ app.get('/api/debts', requireAuth, (req, res) => {
 });
 
 app.post('/api/debts', requireAuth, (req, res) => {
-  const { direction, person, phone, amount, description, due_date, livestock_type, quantity } = req.body || {};
+  const { direction, person, phone, amount, description, due_date, livestock_type, quantity, lot_id, incurred_date } = req.body || {};
   if (!['owed_to_me', 'i_owe'].includes(direction)) return badRequest(res, 'Invalid debt direction.');
   if (!person) return badRequest(res, 'Enter a name.');
   const amt = parseFloat(amount);
@@ -405,9 +464,20 @@ app.post('/api/debts', requireAuth, (req, res) => {
     if (!qty || qty <= 0) return badRequest(res, 'Enter a valid number of pieces.');
   }
 
+  // Optional — ties the debt to a specific broiler/layer lot so it counts
+  // toward that lot's own income/expense calculator, same as transactions.
+  let lotId = null;
+  if (lot_id !== undefined && lot_id !== null && lot_id !== '') {
+    const lot = db.prepare('SELECT id FROM broiler_lots WHERE id = ? AND farm_id = ?').get(lot_id, req.user.farmId);
+    if (!lot) return badRequest(res, 'That lot was not found.');
+    lotId = lot.id;
+  }
+
+  const incurredDate = incurred_date || new Date().toISOString().slice(0, 10);
+
   const info = db.prepare(
-    'INSERT INTO debts (farm_id, user_id, direction, person, phone, amount, description, livestock_type, quantity, due_date) VALUES (?,?,?,?,?,?,?,?,?,?)'
-  ).run(req.user.farmId, req.user.userId, direction, person, phone || null, amt, description || '', animalType, qty, due_date || null);
+    'INSERT INTO debts (farm_id, user_id, direction, person, phone, amount, description, livestock_type, quantity, lot_id, incurred_date, due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+  ).run(req.user.farmId, req.user.userId, direction, person, phone || null, amt, description || '', animalType, qty, lotId, incurredDate, due_date || null);
 
   if (due_date) {
     createDebtReminder(
@@ -423,11 +493,15 @@ app.patch('/api/debts/:id', requireAuth, (req, res) => {
   const existing = db.prepare('SELECT * FROM debts WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
   if (!existing) return res.status(404).json({ error: 'Debt not found.' });
 
-  const { direction, person, phone, amount, description, due_date, livestock_type, quantity } = req.body || {};
+  const { direction, person, phone, amount, description, due_date, livestock_type, quantity, lot_id, incurred_date } = req.body || {};
 
   // Once a debt is settled, its amount/direction/animal details are already
   // baked into a real transaction on the ledger. Changing them here would
-  // silently desync the two — require un-settling first instead.
+  // silently desync the two — require un-settling first instead. Lot
+  // tagging isn't baked into that transaction the same way (it's read
+  // straight off the debt for the lot calculator, same as animal sales
+  // are), so it stays editable regardless of settled status, same as
+  // incurred/due date, person, phone, and reason.
   const financialFieldsTouched = [direction, amount, livestock_type, quantity].some(v => v !== undefined);
   if (existing.settled && financialFieldsTouched) {
     return badRequest(res, "This debt is settled — un-settle it first to change the amount, direction, or animal details.");
@@ -460,16 +534,27 @@ app.patch('/api/debts/:id', requireAuth, (req, res) => {
       if (!qty || qty <= 0) return badRequest(res, 'Enter a valid number of pieces.');
     }
   }
+  let lotId = existing.lot_id;
+  if (lot_id !== undefined) {
+    if (lot_id === null || lot_id === '') {
+      lotId = null;
+    } else {
+      const lot = db.prepare('SELECT id FROM broiler_lots WHERE id = ? AND farm_id = ?').get(lot_id, req.user.farmId);
+      if (!lot) return badRequest(res, 'That lot was not found.');
+      lotId = lot.id;
+    }
+  }
 
   const newDirection = direction !== undefined ? direction : existing.direction;
   const newPerson = person !== undefined ? person : existing.person;
   const newPhone = phone !== undefined ? (phone || null) : existing.phone;
   const newDescription = description !== undefined ? description : existing.description;
   const newDueDate = due_date !== undefined ? (due_date || null) : existing.due_date;
+  const newIncurredDate = incurred_date !== undefined ? (incurred_date || null) : existing.incurred_date;
 
   db.prepare(
-    'UPDATE debts SET direction=?, person=?, phone=?, amount=?, description=?, livestock_type=?, quantity=?, due_date=? WHERE id=?'
-  ).run(newDirection, newPerson, newPhone, amt, newDescription, animalType, qty, newDueDate, existing.id);
+    'UPDATE debts SET direction=?, person=?, phone=?, amount=?, description=?, livestock_type=?, quantity=?, lot_id=?, incurred_date=?, due_date=? WHERE id=?'
+  ).run(newDirection, newPerson, newPhone, amt, newDescription, animalType, qty, lotId, newIncurredDate, newDueDate, existing.id);
 
   // The due date (or the details inside the reminder message) may have
   // changed — clear out the old not-yet-sent reminder for this debt and
@@ -498,8 +583,8 @@ app.patch('/api/debts/:id/settle', requireAuth, (req, res) => {
       ? `Debt repayment received from ${debt.person}`
       : `Debt repayment made to ${debt.person}`;
     const txInfo = db.prepare(
-      'INSERT INTO transactions (farm_id, user_id, type, amount, category, description, livestock_type, quantity, tx_date) VALUES (?,?,?,?,?,?,?,?,?)'
-    ).run(debt.farm_id, req.user.userId, type, debt.amount, 'Debt settlement', description, debt.livestock_type || null, debt.quantity || null, new Date().toISOString().slice(0, 10));
+      'INSERT INTO transactions (farm_id, user_id, type, amount, category, description, livestock_type, quantity, lot_id, tx_date) VALUES (?,?,?,?,?,?,?,?,?,?)'
+    ).run(debt.farm_id, req.user.userId, type, debt.amount, 'Debt settlement', description, debt.livestock_type || null, debt.quantity || null, debt.lot_id || null, new Date().toISOString().slice(0, 10));
 
     db.prepare('UPDATE debts SET settled = 1, settlement_tx_id = ? WHERE id = ?').run(txInfo.lastInsertRowid, debt.id);
   } else {

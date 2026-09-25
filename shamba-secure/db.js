@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   description TEXT,
   livestock_type TEXT CHECK(livestock_type IS NULL OR livestock_type IN ('chicken','goat','cow')),
   quantity INTEGER,
+  lot_id INTEGER REFERENCES broiler_lots(id) ON DELETE SET NULL,
   tx_date TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now'))
 );
@@ -66,6 +67,8 @@ CREATE TABLE IF NOT EXISTS debts (
   description TEXT,
   livestock_type TEXT CHECK(livestock_type IS NULL OR livestock_type IN ('chicken','goat','cow')),
   quantity INTEGER,
+  lot_id INTEGER REFERENCES broiler_lots(id) ON DELETE SET NULL,
+  incurred_date TEXT,
   due_date TEXT,
   settled INTEGER NOT NULL DEFAULT 0,
   settlement_tx_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
@@ -142,6 +145,14 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS pending_registrations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
+  code TEXT NOT NULL,
+  code_expires TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_tx_farm ON transactions(farm_id);
 CREATE INDEX IF NOT EXISTS idx_debts_farm ON debts(farm_id);
 CREATE INDEX IF NOT EXISTS idx_animals_farm ON animals(farm_id);
@@ -171,6 +182,12 @@ if (!debtCols.includes('livestock_type')) {
 if (!debtCols.includes('quantity')) {
   db.exec('ALTER TABLE debts ADD COLUMN quantity INTEGER');
 }
+if (!debtCols.includes('lot_id')) {
+  db.exec('ALTER TABLE debts ADD COLUMN lot_id INTEGER REFERENCES broiler_lots(id) ON DELETE SET NULL');
+}
+if (!debtCols.includes('incurred_date')) {
+  db.exec('ALTER TABLE debts ADD COLUMN incurred_date TEXT');
+}
 
 const txCols = db.prepare("PRAGMA table_info(transactions)").all().map(c => c.name);
 if (!txCols.includes('livestock_type')) {
@@ -178,6 +195,9 @@ if (!txCols.includes('livestock_type')) {
 }
 if (!txCols.includes('quantity')) {
   db.exec('ALTER TABLE transactions ADD COLUMN quantity INTEGER');
+}
+if (!txCols.includes('lot_id')) {
+  db.exec('ALTER TABLE transactions ADD COLUMN lot_id INTEGER REFERENCES broiler_lots(id) ON DELETE SET NULL');
 }
 
 const farmCols = db.prepare("PRAGMA table_info(farms)").all().map(c => c.name);

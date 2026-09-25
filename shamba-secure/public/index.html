@@ -60,6 +60,12 @@
       <input type="email" id="regEmail" placeholder="you@example.com">
       <label>Password</label>
       <input type="password" id="regPassword" placeholder="At least 6 characters">
+      <div id="regCodeStep" style="display:none">
+        <p class="note">We sent a 6-digit code to <span id="regCodeEmailLabel"></span>. Enter it below to finish creating your account.</p>
+        <label>Verification code</label>
+        <input type="text" id="regCode" placeholder="6-digit code" maxlength="6">
+        <button type="button" class="link-btn" id="regResendCodeBtn">Resend code</button>
+      </div>
       <div class="err" id="regErr"></div>
       <button class="btn" id="regBtn">Create farm account</button>
       <p class="note" style="text-align:center;margin-top:10px;">By continuing you agree to our <a href="/privacy.html" target="_blank">privacy policy</a>.</p>
@@ -171,6 +177,10 @@
             <input type="number" id="txQuantity" min="1" style="display:none;" placeholder="e.g. 3">
           </div>
         </div>
+        <label>Lot (optional)</label>
+        <select id="txLot">
+          <option value="">Not lot-specific</option>
+        </select>
         <div class="err" id="txErr"></div>
         <button class="btn" id="addTxBtn">Save transaction</button>
       </div>
@@ -221,8 +231,20 @@
             <input type="number" id="debtQuantity" min="1" style="display:none;" placeholder="e.g. 3">
           </div>
         </div>
-        <label>Due date (optional)</label>
-        <input type="date" id="debtDue">
+        <label>Lot (optional)</label>
+        <select id="debtLot">
+          <option value="">Not lot-specific</option>
+        </select>
+        <div class="row">
+          <div>
+            <label>Date incurred</label>
+            <input type="date" id="debtIncurred">
+          </div>
+          <div>
+            <label>Due date (optional)</label>
+            <input type="date" id="debtDue">
+          </div>
+        </div>
         <div class="err" id="debtErr"></div>
         <button class="btn" id="addDebtBtn">Save debt</button>
       </div>
@@ -411,6 +433,10 @@
         <input type="number" id="txEditQuantity" min="1" style="display:none;">
       </div>
     </div>
+    <label>Lot (optional)</label>
+    <select id="txEditLot">
+      <option value="">Not lot-specific</option>
+    </select>
     <div class="err" id="txEditErr"></div>
     <button class="btn" id="saveTxEditBtn">Save changes</button>
   </div>
@@ -451,8 +477,20 @@
         <input type="number" id="debtEditQuantity" min="1" style="display:none;">
       </div>
     </div>
-    <label>Due date (optional)</label>
-    <input type="date" id="debtEditDue">
+    <label>Lot (optional)</label>
+    <select id="debtEditLot">
+      <option value="">Not lot-specific</option>
+    </select>
+    <div class="row">
+      <div>
+        <label>Date incurred</label>
+        <input type="date" id="debtEditIncurred">
+      </div>
+      <div>
+        <label>Due date (optional)</label>
+        <input type="date" id="debtEditDue">
+      </div>
+    </div>
     <div class="err" id="debtEditErr"></div>
     <button class="btn" id="saveDebtEditBtn">Save changes</button>
   </div>
@@ -517,6 +555,11 @@
       <button class="del" id="closeLotModalBtn">Close</button>
     </div>
     <div id="modalLotMeta" class="note"></div>
+
+    <h3 style="margin-top:18px">Lot finances</h3>
+    <p class="note">Totals from every transaction and debt tagged to this lot — a sale counts as soon as it's recorded, even on credit, before the debt is settled.</p>
+    <div class="grid-3" id="modalLotFinances"></div>
+
     <div class="row" style="margin-top:10px">
       <div>
         <label>Status</label>
