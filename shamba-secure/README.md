@@ -33,34 +33,38 @@ send. Removing someone from the Team tab takes effect immediately — their
 current session is checked against the database on every request, not
 just at login, so a removed worker can't keep using an old session.
 
-**Forgot password:** every account requires an email address at
-registration specifically to support this. From the login screen, "Forgot
-your password?" sends a one-time reset link valid for 1 hour. The link
-lands on `/reset.html`, where a new password can be set. Requesting a
-reset for an email that isn't registered returns the same generic message
+**Verifying your account:** registration now requires proving ownership of
+either your email or your phone number — pick one with the "Verify via"
+toggle on the signup form, and a 6-digit code is sent there before the
+account is actually created. That choice also becomes your account's
+**password-reset method** going forward. The other contact (whichever you
+didn't verify) still gets its own code automatically and can be confirmed
+afterward from the banner at the top of the app — the app stays fully
+usable in the meantime, nothing is blocked. Existing accounts from before
+this feature are automatically treated as already verified — no one gets
+retroactively locked out.
+
+**Forgot password:** from the login screen, "Forgot your password?" asks
+for the phone number or email on the account, then sends a 6-digit code
+to whichever one you verified at signup (SMS if you verified by phone,
+email if you verified by email) — enter that code plus a new password on
+the same screen to finish. Codes expire after 15 minutes. Requesting a
+reset for an account that doesn't exist returns the same generic message
 as a real one, so this can't be used to check who has an account.
 
-**Email verification:** every new account gets a 6-digit code emailed to
-it right after registering, confirming the email actually belongs to the
-person who typed it in — this matters since that same email is what
-password recovery relies on. The app stays fully usable while
-unverified (nothing is blocked), but a banner stays visible at the top
-until the code is entered, with a "Resend code" option if it doesn't
-arrive. Existing accounts from before this feature are automatically
-treated as already verified — no one gets retroactively locked out.
+To actually deliver these codes (not just log them to the console), set
+`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` for email and/or `AT_USERNAME`,
+`AT_API_KEY` for SMS. **On a managed host (Railway, Render, etc.) these
+must be set as environment variables on the service itself** — `.env` is
+gitignored and never gets deployed, so filling it in locally has no
+effect in production. Leave them blank to develop locally without an
+email/SMS account; codes get printed to the server log instead — look
+for lines starting `[email:not-configured]` or `[sms:not-configured]` if
+codes seem to be going nowhere.
 
-**Phone verification:** works the same way, but by SMS instead of email
-— a separate 6-digit code, a separate banner, tracked independently from
-email verification. **Note this costs one SMS credit per registration and
-per resend**, unlike email verification which is free — a real ongoing
-cost as signups grow, worth keeping in mind alongside Africa's Talking's
-per-message pricing.
-
-To actually send these emails (not just log them to the console), set
-`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` in `.env` — works with Gmail (using
-an app password), SendGrid, Mailgun, Postmark, or any SMTP relay. Leave
-them blank to develop locally without an email account; reset links and
-verification codes get printed to the server log instead.
+**Phone verification (post-signup) costs one SMS credit per resend**,
+unlike email which is free — worth keeping in mind alongside Africa's
+Talking's per-message pricing as signups grow.
 
 ## Multi-currency
 
@@ -254,8 +258,9 @@ repo, and be sure to:
   immediately, not just at their next login).
 - All data queries are scoped by `farm_id` — one farm's users can never
   see another farm's records.
-- Password reset tokens are single-use, expire after 1 hour, and the
-  forgot-password endpoint never reveals whether an email is registered.
+- Password reset codes are single-use, expire after 15 minutes, and the
+  forgot-password endpoint never reveals whether an account is
+  registered.
 - Change `JWT_SECRET` to a real random value before going live.
 
 ## Extending it

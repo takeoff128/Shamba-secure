@@ -31,13 +31,13 @@ async function sendEmail(to, subject, html) {
   });
 }
 
-async function sendPasswordResetEmail(to, resetUrl, farmName) {
-  const subject = 'Reset your Shamba Secure password';
+async function sendPasswordResetCodeEmail(to, code, farmName) {
+  const subject = 'Your Shamba Secure password reset code';
   const html = `
     <p>Hello,</p>
-    <p>Someone requested a password reset for the ${farmName ? `"${farmName}" ` : ''}Shamba Secure account linked to this email.</p>
-    <p><a href="${resetUrl}">Click here to set a new password</a></p>
-    <p>This link expires in 1 hour. If you didn't request this, you can safely ignore this email — your password won't change.</p>
+    <p>Someone requested a password reset for the ${farmName ? `"${farmName}" ` : ''}Shamba Secure account linked to this email. Use this code to set a new password:</p>
+    <p style="font-size:28px; font-weight:700; letter-spacing:4px;">${code}</p>
+    <p>This code expires in 15 minutes. If you didn't request this, you can safely ignore this email — your password won't change.</p>
   `;
   return sendEmail(to, subject, html);
 }
@@ -53,4 +53,4 @@ async function sendVerificationCodeEmail(to, code, farmName) {
   return sendEmail(to, subject, html);
 }
 
-module.exports = { sendEmail, sendPasswordResetEmail, sendVerificationCodeEmail };
+module.exports = { sendEmail, sendPasswordResetCodeEmail, sendVerificationCodeEmail };

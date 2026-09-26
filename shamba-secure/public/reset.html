@@ -14,62 +14,16 @@
       <div class="mark">&#128274;</div>
       <div>
         <h1>Reset your password</h1>
-        <div class="tagline">Choose a new password for your Shamba Secure account.</div>
+        <div class="tagline">Password resets have moved.</div>
       </div>
     </div>
 
-    <div id="resetForm">
-      <label>New password</label>
-      <input type="password" id="newPassword" placeholder="At least 6 characters">
-      <label>Confirm new password</label>
-      <input type="password" id="confirmPassword" placeholder="Type it again">
-      <div class="err" id="resetErr"></div>
-      <button class="btn" id="resetBtn">Set new password</button>
-    </div>
-
-    <div id="resetDone" style="display:none">
-      <p class="success-msg">Your password has been reset. You can now log in with it.</p>
+    <div id="resetInvalid" style="display:block">
+      <p class="note">Password resets now happen from the main login screen — use "Forgot your password?" there and enter the code we text or email you.</p>
       <a class="btn" href="/" style="text-decoration:none;display:block;">Go to log in</a>
-    </div>
-
-    <div id="resetInvalid" style="display:none">
-      <p class="err" style="min-height:auto;">This reset link is missing or malformed.</p>
-      <a class="btn secondary" href="/" style="text-decoration:none;display:block;">Back to Shamba Secure</a>
     </div>
   </div>
 </div>
 
-<script>
-const params = new URLSearchParams(window.location.search);
-const token = params.get('token');
-
-if (!token) {
-  document.getElementById('resetForm').style.display = 'none';
-  document.getElementById('resetInvalid').style.display = 'block';
-} else {
-  document.getElementById('resetBtn').addEventListener('click', async () => {
-    const err = document.getElementById('resetErr');
-    err.textContent = '';
-    const password = document.getElementById('newPassword').value;
-    const confirm = document.getElementById('confirmPassword').value;
-    if (!password || password.length < 6) { err.textContent = 'Password must be at least 6 characters.'; return; }
-    if (password !== confirm) { err.textContent = "Passwords don't match."; return; }
-
-    try {
-      const res = await fetch('/api/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Something went wrong.');
-      document.getElementById('resetForm').style.display = 'none';
-      document.getElementById('resetDone').style.display = 'block';
-    } catch (e) {
-      err.textContent = e.message;
-    }
-  });
-}
-</script>
 </body>
 </html>

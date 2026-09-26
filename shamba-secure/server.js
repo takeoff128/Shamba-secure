@@ -9,7 +9,7 @@ const { setAuthCookie, clearAuthCookie, requireAuth, requireOwner } = require('.
 const { runDueReminders, createDebtReminder, sendSms } = require('./reminders');
 const { BROILER_SCHEDULE, SCHEDULES, getSchedule, createLotReminders } = require('./broiler');
 const { CURRENCIES } = require('./currency');
-const { sendPasswordResetEmail, sendVerificationCodeEmail } = require('./email');
+const { sendPasswordResetCodeEmail, sendVerificationCodeEmail } = require('./email');
 const { isConfigured: pushConfigured, VAPID_PUBLIC_KEY } = require('./webpush');
 const cron = require('node-cron');
 
@@ -52,49 +52,58 @@ async function issuePhoneVerificationCode(userId, phone, farmName) {
 
 // ---------------- AUTH ----------------
 
-// Sends a 6-digit code to an email address BEFORE any account exists, so
-// registration can require proof of email ownership as part of the same
-// form. Also used for "resend code" on the registration screen — calling
-// it again with the same email just overwrites the pending code.
+// Sends a 6-digit code to an email or phone number BEFORE any account
+// exists, so registration can require proof of ownership as part of the
+// same form. Also used for "resend code" — calling it again with the same
+// channel/contact just overwrites the pending code.
 app.post('/api/register/send-code', async (req, res) => {
-  const { email, farmName } = req.body || {};
-  if (!email) return badRequest(res, 'Enter your email address.');
-  if (!/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email address.');
+  const { channel, contact, farmName } = req.body || {};
+  if (!['email', 'phone'].includes(channel)) return badRequest(res, 'Invalid verification channel.');
+  if (!contact) return badRequest(res, channel === 'email' ? 'Enter your email address.' : 'Enter your phone number.');
+  if (channel === 'email' && !/^\S+@\S+\.\S+$/.test(contact)) return badRequest(res, 'Enter a valid email address.');
 
-  const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-  if (existingEmail) return badRequest(res, 'That email is already registered.');
+  const existing = channel === 'email'
+    ? db.prepare('SELECT id FROM users WHERE email = ?').get(contact)
+    : db.prepare('SELECT id FROM users WHERE phone = ?').get(contact);
+  if (existing) return badRequest(res, channel === 'email' ? 'That email is already registered.' : 'That phone number is already registered.');
 
   const code = String(crypto.randomInt(100000, 1000000));
   const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
   db.prepare(
-    `INSERT INTO pending_registrations (email, code, code_expires) VALUES (?, ?, ?)
-     ON CONFLICT(email) DO UPDATE SET code = excluded.code, code_expires = excluded.code_expires`
-  ).run(email, code, expires);
+    `INSERT INTO pending_registrations (channel, contact, code, code_expires) VALUES (?, ?, ?, ?)
+     ON CONFLICT(channel, contact) DO UPDATE SET code = excluded.code, code_expires = excluded.code_expires`
+  ).run(channel, contact, code, expires);
 
   try {
-    await sendVerificationCodeEmail(email, code, farmName || null);
+    if (channel === 'email') {
+      await sendVerificationCodeEmail(contact, code, farmName || null);
+    } else {
+      await sendSms([contact], `Your Shamba Secure verification code${farmName ? ` for ${farmName}` : ''} is ${code}. It expires in 15 minutes.`);
+    }
   } catch (err) {
-    console.error('[email] failed to send pre-registration verification code:', err.message);
-    return res.status(500).json({ error: 'Could not send the verification email. Try again in a moment.' });
+    console.error(`[${channel}] failed to send pre-registration verification code:`, err.message);
+    return res.status(500).json({ error: `Could not send the verification ${channel === 'email' ? 'email' : 'text'}. Try again in a moment.` });
   }
 
   res.json({ ok: true });
 });
 
 app.post('/api/register', async (req, res) => {
-  const { farmName, name, phone, email, password, currency, country, code } = req.body || {};
+  const { farmName, name, phone, email, password, currency, country, code, verify_channel } = req.body || {};
   if (!farmName || !name || !phone || !email || !password) return badRequest(res, 'All fields are required.');
   if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
   if (!/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email address.');
-  if (!code) return badRequest(res, 'Enter the verification code sent to your email.');
+  if (!['email', 'phone'].includes(verify_channel)) return badRequest(res, 'Choose how to verify your account.');
+  if (!code) return badRequest(res, 'Enter the verification code you were sent.');
 
   const existingPhone = db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
   if (existingPhone) return badRequest(res, 'That phone number is already registered.');
   const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (existingEmail) return badRequest(res, 'That email is already registered.');
 
-  const pending = db.prepare('SELECT * FROM pending_registrations WHERE email = ?').get(email);
-  if (!pending) return badRequest(res, 'Send a verification code to this email first.');
+  const contact = verify_channel === 'email' ? email : phone;
+  const pending = db.prepare('SELECT * FROM pending_registrations WHERE channel = ? AND contact = ?').get(verify_channel, contact);
+  if (!pending) return badRequest(res, 'Send yourself a verification code first.');
   if (pending.code !== code) return badRequest(res, 'That code is incorrect.');
   if (new Date(pending.code_expires) < new Date()) return badRequest(res, 'That code has expired. Request a new one.');
 
@@ -105,17 +114,30 @@ app.post('/api/register', async (req, res) => {
   const farmId = farmInfo.lastInsertRowid;
 
   const hash = bcrypt.hashSync(password, 12);
+  // Only the channel that was just verified is marked verified here — the
+  // other one still gets its own banner/resend flow after login, same as
+  // before. reset_channel records the pick as the account's password-reset
+  // method going forward.
   const insertUser = db.prepare(
-    // Email is already verified at this point (the code above proves it) —
-    // phone verification still happens after account creation, unchanged.
-    'INSERT INTO users (farm_id, name, phone, email, password_hash, role, email_verified, phone_verified) VALUES (?, ?, ?, ?, ?, ?, 1, 0)'
+    'INSERT INTO users (farm_id, name, phone, email, password_hash, role, email_verified, phone_verified, reset_channel) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
-  const userInfo = insertUser.run(farmId, name, phone, email, hash, 'owner');
+  const userInfo = insertUser.run(
+    farmId, name, phone, email, hash, 'owner',
+    verify_channel === 'email' ? 1 : 0,
+    verify_channel === 'phone' ? 1 : 0,
+    verify_channel
+  );
 
-  db.prepare('DELETE FROM pending_registrations WHERE email = ?').run(email);
+  db.prepare('DELETE FROM pending_registrations WHERE channel = ? AND contact = ?').run(verify_channel, contact);
 
   setAuthCookie(res, { userId: userInfo.lastInsertRowid, farmId, name, role: 'owner' });
-  await issuePhoneVerificationCode(userInfo.lastInsertRowid, phone, farmName);
+  // Prime the OTHER channel's verification code too, so its banner/resend
+  // works right away without an extra click — same as before this change.
+  if (verify_channel === 'email') {
+    await issuePhoneVerificationCode(userInfo.lastInsertRowid, phone, farmName);
+  } else {
+    await issueVerificationCode(userInfo.lastInsertRowid, email, farmName);
+  }
   res.json({ ok: true, farmName, name, role: 'owner', currency: currencyCode });
 });
 
@@ -134,8 +156,8 @@ app.post('/api/users', requireAuth, requireOwner, async (req, res) => {
 
   const hash = bcrypt.hashSync(password, 12);
   const info = db.prepare(
-    'INSERT INTO users (farm_id, name, phone, email, password_hash, role, email_verified, phone_verified) VALUES (?, ?, ?, ?, ?, ?, ?, 0)'
-  ).run(req.user.farmId, name, phone, email || null, hash, 'worker', email ? 0 : 1);
+    'INSERT INTO users (farm_id, name, phone, email, password_hash, role, email_verified, phone_verified, reset_channel) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)'
+  ).run(req.user.farmId, name, phone, email || null, hash, 'worker', email ? 0 : 1, email ? 'email' : 'phone');
 
   const farm = db.prepare('SELECT name FROM farms WHERE id = ?').get(req.user.farmId);
   if (email) {
@@ -204,30 +226,33 @@ app.patch('/api/farm', requireAuth, requireOwner, (req, res) => {
 // ---------------- PASSWORD RESET ----------------
 
 app.post('/api/forgot-password', async (req, res) => {
-  const { email } = req.body || {};
-  if (!email) return badRequest(res, 'Enter your email address.');
+  const { identifier } = req.body || {};
+  if (!identifier) return badRequest(res, 'Enter your phone number or email address.');
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const user = db.prepare('SELECT * FROM users WHERE email = ? OR phone = ?').get(identifier, identifier);
 
-  // Always respond the same way whether or not the email is registered —
+  // Always respond the same way whether or not the account exists —
   // otherwise this endpoint could be used to check who has an account here.
-  const genericResponse = { ok: true, message: 'If that email is registered, a reset link has been sent.' };
+  const genericResponse = { ok: true, message: "If that account exists, we've sent a reset code." };
 
   if (!user) return res.json(genericResponse);
 
-  const token = crypto.randomBytes(32).toString('hex');
-  const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+  const code = String(crypto.randomInt(100000, 1000000));
+  const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
   db.prepare('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?')
-    .run(token, expires, user.id);
+    .run(code, expires, user.id);
 
   const farm = db.prepare('SELECT name FROM farms WHERE id = ?').get(user.farm_id);
-  const resetUrl = `${req.protocol}://${req.get('host')}/reset.html?token=${token}`;
 
   try {
-    await sendPasswordResetEmail(email, resetUrl, farm ? farm.name : null);
+    if (user.reset_channel === 'phone') {
+      await sendSms([user.phone], `Your Shamba Secure password reset code is ${code}. It expires in 15 minutes. If you didn't request this, ignore this text.`);
+    } else {
+      await sendPasswordResetCodeEmail(user.email, code, farm ? farm.name : null);
+    }
   } catch (err) {
-    console.error('[email] failed to send password reset:', err.message);
+    console.error(`[${user.reset_channel || 'email'}] failed to send password reset code:`, err.message);
     // Still return the generic response — don't reveal delivery failures either.
   }
 
@@ -235,13 +260,13 @@ app.post('/api/forgot-password', async (req, res) => {
 });
 
 app.post('/api/reset-password', (req, res) => {
-  const { token, password } = req.body || {};
-  if (!token || !password) return badRequest(res, 'Missing token or new password.');
+  const { identifier, code, password } = req.body || {};
+  if (!identifier || !code || !password) return badRequest(res, 'Missing your phone/email, code, or new password.');
   if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
 
-  const user = db.prepare('SELECT * FROM users WHERE reset_token = ?').get(token);
+  const user = db.prepare('SELECT * FROM users WHERE (email = ? OR phone = ?) AND reset_token = ?').get(identifier, identifier, code);
   if (!user || !user.reset_token_expires || new Date(user.reset_token_expires) < new Date()) {
-    return res.status(400).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
+    return res.status(400).json({ error: 'That code is invalid or has expired. Request a new one.' });
   }
 
   const hash = bcrypt.hashSync(password, 12);

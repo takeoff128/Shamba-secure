@@ -79,6 +79,7 @@ document.querySelectorAll('#authModeSeg button').forEach(b=>{
     document.getElementById('registerForm').style.display = b.dataset.val==='register' ? 'block':'none';
     document.getElementById('forgotForm').style.display = 'none';
     if (b.dataset.val !== 'register') resetRegCodeStep();
+    resetForgotForm();
   });
 });
 
@@ -86,22 +87,66 @@ document.getElementById('showForgotBtn').addEventListener('click', ()=>{
   document.getElementById('loginForm').style.display = 'none';
   document.getElementById('forgotForm').style.display = 'block';
 });
+function resetForgotForm(){
+  document.getElementById('forgotCodeStep').style.display = 'none';
+  document.getElementById('forgotCode').value = '';
+  document.getElementById('forgotNewPassword').value = '';
+  document.getElementById('forgotConfirmPassword').value = '';
+  document.getElementById('forgotBtn').textContent = 'Send reset code';
+  document.getElementById('forgotErr').textContent = '';
+  document.getElementById('forgotSuccess').textContent = '';
+  forgotCodeSent = false;
+}
 document.getElementById('backToLoginBtn').addEventListener('click', ()=>{
   document.getElementById('forgotForm').style.display = 'none';
   document.getElementById('loginForm').style.display = 'block';
-  document.getElementById('forgotErr').textContent = '';
-  document.getElementById('forgotSuccess').textContent = '';
+  document.getElementById('forgotIdentifier').value = '';
+  resetForgotForm();
 });
 
+// Same two-click pattern as registration: first click requests a code
+// (sent via whichever channel — email or SMS — that account verified at
+// signup), second click submits the code + new password.
+let forgotCodeSent = false;
 document.getElementById('forgotBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('forgotErr'); err.textContent = '';
   const success = document.getElementById('forgotSuccess'); success.textContent = '';
-  const email = document.getElementById('forgotEmail').value.trim();
-  if (!email){ err.textContent = 'Enter your email address.'; return; }
+  const identifier = document.getElementById('forgotIdentifier').value.trim();
+  if (!identifier){ err.textContent = 'Enter your phone number or email.'; return; }
+
+  if (!forgotCodeSent){
+    try{
+      const res = await api('/forgot-password', { method:'POST', body:{ identifier } });
+      success.textContent = res.message;
+      forgotCodeSent = true;
+      document.getElementById('forgotCodeStep').style.display = 'block';
+      document.getElementById('forgotBtn').textContent = 'Reset password';
+    }catch(e){ err.textContent = e.message; }
+    return;
+  }
+
+  const code = document.getElementById('forgotCode').value.trim();
+  const password = document.getElementById('forgotNewPassword').value;
+  const confirm = document.getElementById('forgotConfirmPassword').value;
+  if (!code){ err.textContent = 'Enter the code you were sent.'; return; }
+  if (!password || password.length < 6){ err.textContent = 'Password must be at least 6 characters.'; return; }
+  if (password !== confirm){ err.textContent = "Passwords don't match."; return; }
   try{
-    const res = await api('/forgot-password', { method:'POST', body:{ email } });
-    success.textContent = res.message;
-    document.getElementById('forgotEmail').value = '';
+    await api('/reset-password', { method:'POST', body:{ identifier, code, password } });
+    document.getElementById('forgotForm').style.display = 'none';
+    document.getElementById('loginForm').style.display = 'block';
+    document.getElementById('forgotIdentifier').value = '';
+    resetForgotForm();
+    showToast('Password reset — log in with your new password.');
+  }catch(e){ err.textContent = e.message; }
+});
+document.getElementById('forgotResendBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('forgotErr'); err.textContent = '';
+  const identifier = document.getElementById('forgotIdentifier').value.trim();
+  if (!identifier){ err.textContent = 'Enter your phone number or email first.'; return; }
+  try{
+    const res = await api('/forgot-password', { method:'POST', body:{ identifier } });
+    document.getElementById('forgotSuccess').textContent = res.message;
   }catch(e){ err.textContent = e.message; }
 });
 
@@ -118,15 +163,32 @@ document.getElementById('loginBtn').addEventListener('click', async ()=>{
 });
 
 // Registration now happens in two clicks on the same form: the first click
-// sends a verification code to the entered email and reveals the code
-// field; the second click (with the code filled in) actually creates the
-// account. regCodeSent/regCodeSentForEmail track which phase we're in.
+// sends a verification code via whichever channel (email or phone) is
+// selected and reveals the code field; the second click (with the code
+// filled in) actually creates the account. regCodeSent/regCodeSentFor
+// track which phase we're in and what contact the pending code is for.
+let regVerifyChannel = 'email';
 let regCodeSent = false;
-let regCodeSentForEmail = '';
+let regCodeSentFor = '';
+
+document.querySelectorAll('#regVerifySeg button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('#regVerifySeg button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    regVerifyChannel = b.dataset.val;
+    resetRegCodeStep();
+  });
+});
+
+function currentRegContact(){
+  return regVerifyChannel === 'email'
+    ? document.getElementById('regEmail').value.trim()
+    : document.getElementById('regPhone').value.trim();
+}
 
 function resetRegCodeStep(){
   regCodeSent = false;
-  regCodeSentForEmail = '';
+  regCodeSentFor = '';
   document.getElementById('regCodeStep').style.display = 'none';
   document.getElementById('regCode').value = '';
   document.getElementById('regBtn').textContent = 'Create farm account';
@@ -143,23 +205,27 @@ document.getElementById('regBtn').addEventListener('click', async ()=>{
   err.textContent = '';
   if (!farmName || !name || !phone || !email || !password){ err.textContent = 'Fill in every field.'; return; }
 
-  if (!regCodeSent || regCodeSentForEmail !== email){
+  const contact = currentRegContact();
+  if (!regCodeSent || regCodeSentFor !== contact){
     try{
-      await api('/register/send-code', { method:'POST', body:{ email, farmName } });
+      await api('/register/send-code', { method:'POST', body:{ channel: regVerifyChannel, contact, farmName } });
       regCodeSent = true;
-      regCodeSentForEmail = email;
-      document.getElementById('regCodeEmailLabel').textContent = email;
+      regCodeSentFor = contact;
+      document.getElementById('regCodeNote').textContent =
+        regVerifyChannel === 'email'
+          ? `We emailed a 6-digit code to ${contact}. Enter it below to finish creating your account.`
+          : `We texted a 6-digit code to ${contact}. Enter it below to finish creating your account.`;
       document.getElementById('regCodeStep').style.display = 'block';
       document.getElementById('regBtn').textContent = 'Verify & create account';
-      showToast('Verification code sent to your email');
+      showToast(regVerifyChannel === 'email' ? 'Verification code sent to your email' : 'Verification code texted to your phone');
     }catch(e){ err.textContent = e.message; }
     return;
   }
 
   const code = document.getElementById('regCode').value.trim();
-  if (!code){ err.textContent = 'Enter the code from your email.'; return; }
+  if (!code){ err.textContent = 'Enter the code you were sent.'; return; }
   try{
-    await api('/register', { method:'POST', body:{ farmName, name, phone, email, password, currency, code } });
+    await api('/register', { method:'POST', body:{ farmName, name, phone, email, password, currency, code, verify_channel: regVerifyChannel } });
     resetRegCodeStep();
     await enterApp();
   }catch(e){ err.textContent = e.message; }
@@ -168,18 +234,23 @@ document.getElementById('regBtn').addEventListener('click', async ()=>{
 document.getElementById('regResendCodeBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('regErr'); err.textContent = '';
   const farmName = document.getElementById('regFarmName').value.trim();
-  const email = document.getElementById('regEmail').value.trim();
-  if (!email){ err.textContent = 'Enter your email address first.'; return; }
+  const contact = currentRegContact();
+  if (!contact){ err.textContent = regVerifyChannel === 'email' ? 'Enter your email address first.' : 'Enter your phone number first.'; return; }
   try{
-    await api('/register/send-code', { method:'POST', body:{ email, farmName } });
+    await api('/register/send-code', { method:'POST', body:{ channel: regVerifyChannel, contact, farmName } });
     showToast('A new code has been sent.');
   }catch(e){ err.textContent = e.message; }
 });
 
-// If they change the email after a code's been sent, that code is now for
-// the wrong address — fall back to step 1 so a fresh one gets sent.
+// If they change the field a code was sent to, that code is now for the
+// wrong contact — fall back to step 1 so a fresh one gets sent.
 document.getElementById('regEmail').addEventListener('input', ()=>{
-  if (regCodeSent && document.getElementById('regEmail').value.trim() !== regCodeSentForEmail){
+  if (regVerifyChannel === 'email' && regCodeSent && document.getElementById('regEmail').value.trim() !== regCodeSentFor){
+    resetRegCodeStep();
+  }
+});
+document.getElementById('regPhone').addEventListener('input', ()=>{
+  if (regVerifyChannel === 'phone' && regCodeSent && document.getElementById('regPhone').value.trim() !== regCodeSentFor){
     resetRegCodeStep();
   }
 });

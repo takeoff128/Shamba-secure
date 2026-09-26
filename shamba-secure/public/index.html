@@ -38,12 +38,22 @@
     </div>
 
     <div id="forgotForm" style="display:none">
-      <p class="note">Enter the email address on your account and we'll send a link to reset your password.</p>
-      <label>Email address</label>
-      <input type="email" id="forgotEmail" placeholder="you@example.com">
+      <p class="note" id="forgotStep1Note">Enter the phone number or email on your account and we'll text or email you a reset code, whichever you verified when you signed up.</p>
+      <label>Phone number or email</label>
+      <input type="text" id="forgotIdentifier" placeholder="07XX XXX XXX or you@example.com">
+      <div id="forgotCodeStep" style="display:none">
+        <p class="note">If that account exists, a code was sent. Enter it below with a new password.</p>
+        <label>Reset code</label>
+        <input type="text" id="forgotCode" placeholder="6-digit code" maxlength="6">
+        <label>New password</label>
+        <input type="password" id="forgotNewPassword" placeholder="At least 6 characters">
+        <label>Confirm new password</label>
+        <input type="password" id="forgotConfirmPassword" placeholder="Type it again">
+        <button type="button" class="link-btn" id="forgotResendBtn">Resend code</button>
+      </div>
       <div class="err" id="forgotErr"></div>
       <div class="success-msg" id="forgotSuccess"></div>
-      <button class="btn" id="forgotBtn">Send reset link</button>
+      <button class="btn" id="forgotBtn">Send reset code</button>
       <button type="button" class="link-btn" id="backToLoginBtn">Back to log in</button>
     </div>
 
@@ -60,8 +70,14 @@
       <input type="email" id="regEmail" placeholder="you@example.com">
       <label>Password</label>
       <input type="password" id="regPassword" placeholder="At least 6 characters">
+      <label>Verify via</label>
+      <div class="seg" id="regVerifySeg">
+        <button type="button" class="on" data-val="email">Email</button>
+        <button type="button" data-val="phone">Phone (SMS)</button>
+      </div>
+      <p class="note">Whichever you pick gets a code now to confirm the account is yours, and becomes how you'll reset your password later. You can verify the other one afterward too.</p>
       <div id="regCodeStep" style="display:none">
-        <p class="note">We sent a 6-digit code to <span id="regCodeEmailLabel"></span>. Enter it below to finish creating your account.</p>
+        <p class="note" id="regCodeNote"></p>
         <label>Verification code</label>
         <input type="text" id="regCode" placeholder="6-digit code" maxlength="6">
         <button type="button" class="link-btn" id="regResendCodeBtn">Resend code</button>

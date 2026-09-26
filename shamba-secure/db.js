@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL DEFAULT 'worker',
   reset_token TEXT,
   reset_token_expires TEXT,
+  reset_channel TEXT CHECK(reset_channel IS NULL OR reset_channel IN ('email','phone')),
   email_verified INTEGER NOT NULL DEFAULT 1,
   verification_code TEXT,
   verification_code_expires TEXT,
@@ -147,10 +148,12 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 
 CREATE TABLE IF NOT EXISTS pending_registrations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  email TEXT NOT NULL UNIQUE,
+  channel TEXT NOT NULL CHECK(channel IN ('email','phone')),
+  contact TEXT NOT NULL,
   code TEXT NOT NULL,
   code_expires TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(channel, contact)
 );
 
 CREATE INDEX IF NOT EXISTS idx_tx_farm ON transactions(farm_id);
@@ -248,4 +251,39 @@ if (!userCols.includes('phone_verification_code')) {
 }
 if (!userCols.includes('phone_verification_code_expires')) {
   db.exec('ALTER TABLE users ADD COLUMN phone_verification_code_expires TEXT');
+}
+if (!userCols.includes('reset_channel')) {
+  db.exec("ALTER TABLE users ADD COLUMN reset_channel TEXT CHECK(reset_channel IS NULL OR reset_channel IN ('email','phone'))");
+  // Backfill from whichever verification the account already has, so
+  // existing accounts keep working with the new code-based reset flow —
+  // email takes priority since that's what reset always used before this.
+  db.exec(`
+    UPDATE users SET reset_channel = CASE
+      WHEN email IS NOT NULL AND email_verified = 1 THEN 'email'
+      WHEN phone_verified = 1 THEN 'phone'
+      WHEN email IS NOT NULL THEN 'email'
+      ELSE 'phone'
+    END
+    WHERE reset_channel IS NULL
+  `);
+}
+
+// pending_registrations moved from a single "email" column to a generic
+// channel/contact pair so it can hold either an email or a phone code.
+// Rows here are all short-lived (15-min expiry, unfinished signups), so
+// rebuilding the table on the old schema loses nothing meaningful.
+const pendingCols = db.prepare("PRAGMA table_info(pending_registrations)").all().map(c => c.name);
+if (pendingCols.length && !pendingCols.includes('channel')) {
+  db.exec('DROP TABLE pending_registrations');
+  db.exec(`
+    CREATE TABLE pending_registrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel TEXT NOT NULL CHECK(channel IN ('email','phone')),
+      contact TEXT NOT NULL,
+      code TEXT NOT NULL,
+      code_expires TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(channel, contact)
+    )
+  `);
 }
