@@ -857,6 +857,26 @@ app.post('/api/reminders/run-now', requireAuth, requireOwner, async (req, res) =
   res.json({ ok: true, sent: count });
 });
 
+// ---------------- ADMIN (manual use only) ----------------
+// Deletes one user row by phone or email, so a stuck/test account stops
+// blocking re-registration with that same phone/email (both are UNIQUE).
+// Locked behind ADMIN_SECRET — if that env var isn't set, this endpoint
+// always refuses, so it's safe to leave deployed. Set ADMIN_SECRET,
+// redeploy, call this once, then unset it again if you want it closed.
+app.post('/api/admin/delete-account', (req, res) => {
+  if (!process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Not enabled.' });
+  const { secret, identifier } = req.body || {};
+  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Invalid secret.' });
+  if (!identifier) return badRequest(res, 'Provide the phone or email to delete.');
+
+  const user = db.prepare('SELECT id, farm_id, phone, email FROM users WHERE email = ? OR phone = ?').get(identifier, identifier);
+  db.prepare('DELETE FROM pending_registrations WHERE contact = ?').run(identifier);
+  if (!user) return res.json({ ok: true, deleted: false, message: 'No matching user found (any pending, unfinished signup for this contact was cleared anyway).' });
+
+  db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+  res.json({ ok: true, deleted: true, user: { id: user.id, phone: user.phone, email: user.email } });
+});
+
 // Fallback to the app shell for any other route (simple SPA)
 app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
