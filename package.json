@@ -9,9 +9,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "engines": {
-    "node": ">=18"
-  },
   "dependencies": {
     "africastalking": "^0.7.9",
     "bcryptjs": "^3.0.3",

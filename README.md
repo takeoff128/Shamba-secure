@@ -53,24 +53,14 @@ reset for an account that doesn't exist returns the same generic message
 as a real one, so this can't be used to check who has an account.
 
 To actually deliver these codes (not just log them to the console), set
-either `RESEND_API_KEY` (recommended) or `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`
-for email, and/or `AT_USERNAME`/`AT_API_KEY` for SMS. **On a managed host
-(Railway, Render, etc.) these must be set as environment variables on the
-service itself** — `.env` is gitignored and never gets deployed, so filling
-it in locally has no effect in production. Leave them blank to develop
-locally without an email/SMS account; codes get printed to the server log
-instead — look for lines starting `[email:not-configured]` or
-`[sms:not-configured]` if codes seem to be going nowhere.
-
-**A note specifically for Railway's Free/Hobby plans (and similar hosts):
-outbound SMTP (ports 465/587) is blocked entirely** — `SMTP_HOST` emails
-will fail with a "Connection timeout" no matter how correctly they're
-configured. Use `RESEND_API_KEY` instead — [Resend](https://resend.com)
-delivers over a normal HTTPS API call, which isn't affected by that
-restriction, and its free tier (3,000 emails/month) covers this app
-comfortably. Without a verified domain there, email only reaches the
-address your Resend account itself was signed up with — verify a domain
-at resend.com/domains once you're ready for real users to register.
+`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` for email and/or `AT_USERNAME`,
+`AT_API_KEY` for SMS. **On a managed host (Railway, Render, etc.) these
+must be set as environment variables on the service itself** — `.env` is
+gitignored and never gets deployed, so filling it in locally has no
+effect in production. Leave them blank to develop locally without an
+email/SMS account; codes get printed to the server log instead — look
+for lines starting `[email:not-configured]` or `[sms:not-configured]` if
+codes seem to be going nowhere.
 
 **Phone verification (post-signup) costs one SMS credit per resend**,
 unlike email which is free — worth keeping in mind alongside Africa's
