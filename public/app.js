@@ -47,12 +47,26 @@ function showToast(msg){
 }
 
 async function api(path, opts = {}){
-  const res = await fetch('/api' + path, {
-    method: opts.method || 'GET',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'same-origin',
-    body: opts.body ? JSON.stringify(opts.body) : undefined
-  });
+  // Without a timeout, a slow/hung backend call (e.g. a stuck SMTP send)
+  // leaves fetch waiting forever with nothing shown — looks exactly like
+  // the page is frozen. 20s is generous but guarantees an actual error.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  let res;
+  try{
+    res = await fetch('/api' + path, {
+      method: opts.method || 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      signal: controller.signal
+    });
+  }catch(e){
+    if (e.name === 'AbortError') throw new Error('That took too long to respond. Check your connection and try again.');
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }finally{
+    clearTimeout(timeoutId);
+  }
   const data = await res.json().catch(()=>({}));
   if (!res.ok) throw new Error(data.error || 'Something went wrong.');
   return data;
@@ -202,11 +216,17 @@ document.getElementById('regBtn').addEventListener('click', async ()=>{
   const email = document.getElementById('regEmail').value.trim();
   const password = document.getElementById('regPassword').value;
   const err = document.getElementById('regErr');
+  const btn = document.getElementById('regBtn');
   err.textContent = '';
   if (!farmName || !name || !phone || !email || !password){ err.textContent = 'Fill in every field.'; return; }
 
   const contact = currentRegContact();
-  if (!regCodeSent || regCodeSentFor !== contact){
+  const sendingCode = !regCodeSent || regCodeSentFor !== contact;
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = sendingCode ? 'Sending code\u2026' : 'Creating account\u2026';
+
+  if (sendingCode){
     try{
       await api('/register/send-code', { method:'POST', body:{ channel: regVerifyChannel, contact, farmName } });
       regCodeSent = true;
@@ -216,19 +236,29 @@ document.getElementById('regBtn').addEventListener('click', async ()=>{
           ? `We emailed a 6-digit code to ${contact}. Enter it below to finish creating your account.`
           : `We texted a 6-digit code to ${contact}. Enter it below to finish creating your account.`;
       document.getElementById('regCodeStep').style.display = 'block';
-      document.getElementById('regBtn').textContent = 'Verify & create account';
+      btn.textContent = 'Verify & create account';
       showToast(regVerifyChannel === 'email' ? 'Verification code sent to your email' : 'Verification code texted to your phone');
-    }catch(e){ err.textContent = e.message; }
+    }catch(e){
+      err.textContent = e.message;
+      btn.textContent = originalLabel;
+    }finally{
+      btn.disabled = false;
+    }
     return;
   }
 
   const code = document.getElementById('regCode').value.trim();
-  if (!code){ err.textContent = 'Enter the code you were sent.'; return; }
+  if (!code){ err.textContent = 'Enter the code you were sent.'; btn.disabled = false; btn.textContent = originalLabel; return; }
   try{
     await api('/register', { method:'POST', body:{ farmName, name, phone, email, password, currency, code, verify_channel: regVerifyChannel } });
     resetRegCodeStep();
     await enterApp();
-  }catch(e){ err.textContent = e.message; }
+  }catch(e){
+    err.textContent = e.message;
+    btn.textContent = originalLabel;
+  }finally{
+    btn.disabled = false;
+  }
 });
 
 document.getElementById('regResendCodeBtn').addEventListener('click', async ()=>{

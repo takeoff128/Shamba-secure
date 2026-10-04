@@ -12,7 +12,13 @@ if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
     host: SMTP_HOST,
     port: SMTP_PORT ? parseInt(SMTP_PORT, 10) : 587,
     secure: SMTP_PORT === '465',
-    auth: { user: SMTP_USER, pass: SMTP_PASS }
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+    // Without these, a misconfigured/unreachable SMTP host can hang the
+    // connection attempt for minutes, which hangs the request that
+    // triggered it (e.g. registration) right along with it.
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000
   });
 } else {
   console.log('[email] SMTP_HOST/SMTP_USER/SMTP_PASS not set — emails will be logged, not sent. See .env.example.');
