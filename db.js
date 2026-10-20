@@ -287,3 +287,16 @@ if (pendingCols.length && !pendingCols.includes('channel')) {
     )
   `);
 }
+
+// Farm branding shown in the header/hamburger menu: either a short emoji
+// icon or a small uploaded logo image (stored as a data URL — simple, and
+// small enough once the client resizes it before upload that a files/
+// folder and a static route aren't worth the complexity). The two are
+// mutually exclusive — picking one clears the other, enforced in server.js.
+const farmCols2 = db.prepare("PRAGMA table_info(farms)").all().map(c => c.name);
+if (!farmCols2.includes('icon_emoji')) {
+  db.exec('ALTER TABLE farms ADD COLUMN icon_emoji TEXT');
+}
+if (!farmCols2.includes('logo_image')) {
+  db.exec('ALTER TABLE farms ADD COLUMN logo_image TEXT');
+}

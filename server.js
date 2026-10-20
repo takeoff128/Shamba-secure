@@ -209,6 +209,41 @@ app.get('/api/users', requireAuth, (req, res) => {
   res.json(users);
 });
 
+// Owner-only, same as adding/removing people. Someone's phone/email is also
+// their login identifier, so changing it is re-checked for uniqueness the
+// same way registration is. If the owner edits their own row here, their
+// session cookie is refreshed too, same as /api/me, so the name shown in
+// the header doesn't go stale until next login.
+app.patch('/api/users/:id', requireAuth, requireOwner, (req, res) => {
+  const target = db.prepare('SELECT * FROM users WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
+  if (!target) return res.status(404).json({ error: 'Person not found.' });
+
+  const { name, phone, email } = req.body || {};
+  if (name !== undefined && !name.trim()) return badRequest(res, 'Enter a name.');
+  if (phone !== undefined && !phone.trim()) return badRequest(res, 'Enter a phone number.');
+  if (email !== undefined && email && !/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email address.');
+
+  const newPhone = phone !== undefined ? phone.trim() : target.phone;
+  if (newPhone !== target.phone) {
+    const existingPhone = db.prepare('SELECT id FROM users WHERE phone = ? AND id != ?').get(newPhone, target.id);
+    if (existingPhone) return badRequest(res, 'That phone number is already registered.');
+  }
+  const newEmail = email !== undefined ? (email || null) : target.email;
+  if (newEmail && newEmail !== target.email) {
+    const existingEmail = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(newEmail, target.id);
+    if (existingEmail) return badRequest(res, 'That email is already registered.');
+  }
+
+  const newName = name !== undefined ? name.trim() : target.name;
+  db.prepare('UPDATE users SET name = ?, phone = ?, email = ? WHERE id = ?').run(newName, newPhone, newEmail, target.id);
+
+  if (target.id === req.user.userId) {
+    setAuthCookie(res, { userId: req.user.userId, farmId: req.user.farmId, name: newName, role: req.user.role });
+  }
+
+  res.json({ ok: true, name: newName, phone: newPhone, email: newEmail });
+});
+
 app.delete('/api/users/:id', requireAuth, requireOwner, (req, res) => {
   const target = db.prepare('SELECT * FROM users WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
   if (!target) return res.status(404).json({ error: 'Person not found.' });
@@ -237,14 +272,29 @@ app.post('/api/logout', (req, res) => {
 });
 
 app.get('/api/me', requireAuth, (req, res) => {
-  const farm = db.prepare('SELECT name, currency, country FROM farms WHERE id = ?').get(req.user.farmId);
+  const farm = db.prepare('SELECT name, currency, country, icon_emoji, logo_image FROM farms WHERE id = ?').get(req.user.farmId);
   const user = db.prepare('SELECT phone, email, email_verified, phone_verified FROM users WHERE id = ?').get(req.user.userId);
   res.json({
     name: req.user.name, role: req.user.role, farmName: farm ? farm.name : '',
     currency: farm ? farm.currency : 'KES', country: farm ? farm.country : null,
+    farmIcon: farm ? farm.icon_emoji : null, farmLogo: farm ? farm.logo_image : null,
     email: user ? user.email : null, emailVerified: user ? !!user.email_verified : true,
     phone: user ? user.phone : null, phoneVerified: user ? !!user.phone_verified : true
   });
+});
+
+// Lets the signed-in person change their own display name (what the app
+// calls a "profile"/"username" in the UI — there's no separate login
+// username, it's this same name shown everywhere). The JWT carries the
+// name, so the cookie has to be reissued or the old name would keep
+// showing until the next login.
+app.patch('/api/me', requireAuth, (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return badRequest(res, 'Enter your name.');
+  const trimmed = name.trim();
+  db.prepare('UPDATE users SET name = ? WHERE id = ?').run(trimmed, req.user.userId);
+  setAuthCookie(res, { userId: req.user.userId, farmId: req.user.farmId, name: trimmed, role: req.user.role });
+  res.json({ ok: true, name: trimmed });
 });
 
 app.get('/api/currencies', (req, res) => {
@@ -252,10 +302,44 @@ app.get('/api/currencies', (req, res) => {
 });
 
 app.patch('/api/farm', requireAuth, requireOwner, (req, res) => {
-  const { currency, country, name } = req.body || {};
-  if (currency && !CURRENCIES[currency]) return badRequest(res, 'Unsupported currency.');
-  db.prepare('UPDATE farms SET currency = COALESCE(?, currency), country = COALESCE(?, country), name = COALESCE(?, name) WHERE id = ?')
-    .run(currency || null, country || null, name || null, req.user.farmId);
+  const existing = db.prepare('SELECT * FROM farms WHERE id = ?').get(req.user.farmId);
+  const { currency, country, name, icon_emoji, logo_image } = req.body || {};
+  if (currency !== undefined && !CURRENCIES[currency]) return badRequest(res, 'Unsupported currency.');
+  if (name !== undefined && !name.trim()) return badRequest(res, 'Farm name cannot be empty.');
+  if (icon_emoji !== undefined && icon_emoji && icon_emoji.length > 8) return badRequest(res, 'That icon is too long.');
+
+  // The emoji icon and the uploaded logo are shown the same way in the
+  // header, so only one can be "the" farm image at a time — setting one
+  // clears the other rather than leaving a stale value no UI points at.
+  let newIconEmoji = existing.icon_emoji;
+  let newLogoImage = existing.logo_image;
+  if (icon_emoji !== undefined) {
+    newIconEmoji = icon_emoji || null;
+    if (newIconEmoji) newLogoImage = null;
+  }
+  if (logo_image !== undefined) {
+    if (logo_image) {
+      if (typeof logo_image !== 'string' || !logo_image.startsWith('data:image/')) {
+        return badRequest(res, 'Invalid image.');
+      }
+      // The client resizes/compresses before sending, but this guards the
+      // database regardless of what actually sent the request.
+      if (logo_image.length > 400000) return badRequest(res, 'That image is too large. Try a smaller photo.');
+      newLogoImage = logo_image;
+      newIconEmoji = null;
+    } else {
+      newLogoImage = null;
+    }
+  }
+
+  db.prepare('UPDATE farms SET currency = ?, country = ?, name = ?, icon_emoji = ?, logo_image = ? WHERE id = ?')
+    .run(
+      currency !== undefined ? currency : existing.currency,
+      country !== undefined ? (country || null) : existing.country,
+      name !== undefined ? name.trim() : existing.name,
+      newIconEmoji, newLogoImage,
+      req.user.farmId
+    );
   res.json({ ok: true });
 });
 
@@ -704,10 +788,28 @@ app.post('/api/animals', requireAuth, (req, res) => {
 app.patch('/api/animals/:id', requireAuth, (req, res) => {
   const animal = db.prepare('SELECT * FROM animals WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
   if (!animal) return res.status(404).json({ error: 'Animal not found.' });
-  const { status, notes } = req.body || {};
+  const { status, notes, tag_id, species, breed, sex, dob, acquired_date } = req.body || {};
   if (status && !['active', 'sold', 'deceased'].includes(status)) return badRequest(res, 'Invalid status.');
-  db.prepare('UPDATE animals SET status = COALESCE(?, status), notes = COALESCE(?, notes) WHERE id = ?')
-    .run(status || null, notes ?? null, animal.id);
+  if (tag_id !== undefined && !tag_id.trim()) return badRequest(res, 'Tag ID is required.');
+  if (species !== undefined && !species.trim()) return badRequest(res, 'Species is required.');
+
+  db.prepare(
+    `UPDATE animals SET
+       status = COALESCE(?, status), notes = COALESCE(?, notes),
+       tag_id = COALESCE(?, tag_id), species = COALESCE(?, species),
+       breed = COALESCE(?, breed), sex = COALESCE(?, sex),
+       dob = ?, acquired_date = ?
+     WHERE id = ?`
+  ).run(
+    status || null, notes ?? null,
+    tag_id !== undefined ? tag_id.trim() : null,
+    species !== undefined ? species.trim() : null,
+    breed !== undefined ? breed : null,
+    sex !== undefined ? sex : null,
+    dob !== undefined ? (dob || null) : animal.dob,
+    acquired_date !== undefined ? (acquired_date || null) : animal.acquired_date,
+    animal.id
+  );
   res.json({ ok: true });
 });
 
@@ -781,10 +883,40 @@ app.post('/api/broiler-lots', requireAuth, (req, res) => {
 app.patch('/api/broiler-lots/:id', requireAuth, (req, res) => {
   const lot = db.prepare('SELECT * FROM broiler_lots WHERE id = ? AND farm_id = ?').get(req.params.id, req.user.farmId);
   if (!lot) return res.status(404).json({ error: 'Lot not found.' });
-  const { status, notes } = req.body || {};
+  const { status, notes, name, quantity, start_date } = req.body || {};
   if (status && !['active', 'closed'].includes(status)) return badRequest(res, 'Invalid status.');
-  db.prepare('UPDATE broiler_lots SET status = COALESCE(?, status), notes = COALESCE(?, notes) WHERE id = ?')
-    .run(status || null, notes ?? null, lot.id);
+  if (name !== undefined && !name.trim()) return badRequest(res, 'Give this lot a name or tag.');
+  if (start_date !== undefined && !start_date) return badRequest(res, 'Pick a start date.');
+
+  let qty = lot.quantity;
+  if (quantity !== undefined) {
+    if (quantity === null || quantity === '') {
+      qty = null;
+    } else {
+      qty = parseInt(quantity, 10);
+      if (!qty || qty <= 0) return badRequest(res, 'Enter a valid number of birds.');
+    }
+  }
+
+  const newName = name !== undefined ? name.trim() : lot.name;
+  const newStartDate = start_date !== undefined ? start_date : lot.start_date;
+
+  db.prepare(
+    'UPDATE broiler_lots SET status = COALESCE(?, status), notes = COALESCE(?, notes), name = ?, quantity = ?, start_date = ? WHERE id = ?'
+  ).run(status || null, notes ?? null, newName, qty, newStartDate, lot.id);
+
+  // The start date drives every checkpoint in the schedule — if it moved,
+  // the not-yet-sent reminders are now dated wrong. Clear those and
+  // regenerate from the new date, same approach as editing a debt's due date.
+  if (start_date !== undefined && start_date !== lot.start_date) {
+    db.prepare("DELETE FROM reminders WHERE farm_id = ? AND subject_type = 'broiler_lot' AND subject_id = ? AND sent_at IS NULL")
+      .run(req.user.farmId, lot.id);
+    createLotReminders(
+      { id: lot.id, farm_id: req.user.farmId, name: newName, poultry_type: lot.poultry_type, start_date: newStartDate },
+      req.user.userId
+    );
+  }
+
   res.json({ ok: true });
 });
 

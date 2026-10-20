@@ -1,4 +1,14 @@
-const state = { tx: [], debts: [], animals: [], users: [], reminders: [], lots: [], schedule: [], currentAnimalId: null, currentLotId: null, role: null, currency: 'KES' };
+const state = {
+  tx: [], debts: [], animals: [], users: [], reminders: [], lots: [], schedule: [],
+  currentAnimalId: null, currentLotId: null, currentTeamEditId: null,
+  role: null, currency: 'KES', name: '', farmName: '', country: null,
+  farmIcon: null, farmLogo: null
+};
+
+// A small, farm-relevant set — not meant to be exhaustive, just enough
+// variety that most farms can find something that fits better than the
+// generic lock icon used before any choice is made.
+const FARM_ICON_CHOICES = ['\u{1F512}','\u{1F414}','\u{1F404}','\u{1F410}','\u{1F416}','\u{1F33E}','\u{1F6DC}','\u{1F3E1}','\u{1F95A}','\u{1F41D}'];
 
 const CURRENCY_SYMBOLS = {
   KES: 'KSh', UGX: 'USh', TZS: 'TSh', NGN: '\u20a6', GHS: 'GH\u20b5',
@@ -35,6 +45,18 @@ if ('serviceWorker' in navigator) {
 }
 
 function isOwner(){ return state.role === 'owner'; }
+
+// The farm's branding (an uploaded logo image, a chosen emoji icon, or the
+// default lock) shows in both the header and the drawer's own header, so
+// this fills both from the same state rather than duplicating the markup
+// logic at each call site.
+function renderFarmMark(){
+  const html = state.farmLogo
+    ? `<img src="${state.farmLogo}" alt="">`
+    : escapeHtml(state.farmIcon || '\u{1F512}');
+  document.getElementById('farmMark').innerHTML = html;
+  document.getElementById('drawerFarmMark').innerHTML = html;
+}
 function removeBtn(onclick){ return isOwner() ? `<button class="del" onclick="${onclick}">Remove</button>` : ''; }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmtMoney(n){ return (CURRENCY_SYMBOLS[state.currency] || state.currency) + ' ' + Math.round(n).toLocaleString(); }
@@ -295,12 +317,22 @@ async function enterApp(){
   const me = await api('/me');
   state.role = me.role;
   state.currency = me.currency || 'KES';
+  state.name = me.name;
+  state.farmName = me.farmName;
+  state.country = me.country || null;
+  state.farmIcon = me.farmIcon || null;
+  state.farmLogo = me.farmLogo || null;
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('farmNameLabel').textContent = me.farmName;
   document.getElementById('userLabel').textContent = me.name + ' \u00b7 ' + (me.role === 'owner' ? 'Owner' : 'Worker');
+  document.getElementById('drawerFarmNameLabel').textContent = me.farmName;
+  document.getElementById('drawerUserLabel').textContent = me.name + ' \u00b7 ' + (me.role === 'owner' ? 'Owner' : 'Worker');
+  renderFarmMark();
   document.getElementById('addWorkerCard').style.display = me.role === 'owner' ? 'block' : 'none';
-  document.getElementById('farmSettingsCard').style.display = me.role === 'owner' ? 'block' : 'none';
+  document.getElementById('farmSettingsPointer').style.display = me.role === 'owner' ? 'block' : 'none';
+  document.getElementById('farmSettingsOwnerOnly').style.display = me.role === 'owner' ? 'block' : 'none';
+  document.getElementById('farmSettingsReadonlyNote').style.display = me.role === 'owner' ? 'none' : 'block';
   document.getElementById('clearTxBtn').style.display = me.role === 'owner' ? 'inline-block' : 'none';
   document.getElementById('clearDebtsBtn').style.display = me.role === 'owner' ? 'inline-block' : 'none';
 
@@ -324,6 +356,7 @@ async function enterApp(){
   const farmCurrencySelect = document.getElementById('farmCurrency');
   farmCurrencySelect.innerHTML = document.getElementById('regCurrency').innerHTML;
   farmCurrencySelect.value = state.currency;
+  renderIconPicker();
   await loadAll();
   refreshPushButton();
 }
@@ -370,14 +403,241 @@ document.getElementById('resendPhoneCodeBtn').addEventListener('click', async ()
   }catch(e){ err.textContent = e.message; }
 });
 
+// ---------------- HAMBURGER MENU / DRAWER ----------------
+function openDrawer(){
+  document.getElementById('sideDrawer').classList.add('open');
+  document.getElementById('drawerBackdrop').classList.add('open');
+  document.getElementById('hamburgerBtn').setAttribute('aria-expanded', 'true');
+}
+function closeDrawer(){
+  document.getElementById('sideDrawer').classList.remove('open');
+  document.getElementById('drawerBackdrop').classList.remove('open');
+  document.getElementById('hamburgerBtn').setAttribute('aria-expanded', 'false');
+}
+document.getElementById('hamburgerBtn').addEventListener('click', openDrawer);
+document.getElementById('closeDrawerBtn').addEventListener('click', closeDrawer);
+document.getElementById('drawerBackdrop').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeDrawer(); });
+// Picking a section closes the drawer too, since it's covering the content
+// just chosen — the .tab-btn listener above already handles the switch.
+document.querySelectorAll('.drawer-item.tab-btn').forEach(btn => btn.addEventListener('click', closeDrawer));
+document.getElementById('drawerLogoutBtn').addEventListener('click', ()=> document.getElementById('logoutBtn').click());
+
+// ---------------- PROFILE & FARM SETTINGS ----------------
+function openProfileModal(){
+  closeDrawer();
+  document.getElementById('profileName').value = state.name;
+  document.getElementById('profileNameErr').textContent = '';
+  document.getElementById('farmSettingsErr').textContent = '';
+  if (isOwner()){
+    document.getElementById('farmNameInput').value = state.farmName;
+    document.getElementById('farmCountryInput').value = state.country || '';
+    document.getElementById('farmCurrency').value = state.currency;
+    renderIconPicker();
+    updateLogoPreview();
+  }
+  document.getElementById('profileModal').style.display = 'flex';
+}
+function closeProfileModal(){ document.getElementById('profileModal').style.display = 'none'; }
+document.getElementById('openProfileBtn').addEventListener('click', openProfileModal);
+document.getElementById('openProfileBtn').addEventListener('keydown', (e)=>{
+  if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openProfileModal(); }
+});
+document.getElementById('drawerProfileBtn').addEventListener('click', openProfileModal);
+document.getElementById('closeProfileBtn').addEventListener('click', closeProfileModal);
+
+document.getElementById('saveProfileNameBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('profileNameErr'); err.textContent = '';
+  const name = document.getElementById('profileName').value.trim();
+  if (!name){ err.textContent = 'Enter your name.'; return; }
+  try{
+    await api('/me', { method:'PATCH', body:{ name } });
+    state.name = name;
+    const label = name + ' · ' + (state.role === 'owner' ? 'Owner' : 'Worker');
+    document.getElementById('userLabel').textContent = label;
+    document.getElementById('drawerUserLabel').textContent = label;
+    showToast('Name updated');
+  }catch(e){ err.textContent = e.message; }
+});
+
+function renderIconPicker(){
+  const el = document.getElementById('iconPicker');
+  if (!el) return;
+  el.innerHTML = FARM_ICON_CHOICES.map(icon => `
+    <button type="button" class="${!state.farmLogo && state.farmIcon === icon ? 'on' : ''}" data-icon="${icon}">${icon}</button>
+  `).join('');
+  el.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const icon = btn.dataset.icon;
+      try{
+        await api('/farm', { method:'PATCH', body:{ icon_emoji: icon, logo_image: null } });
+        state.farmIcon = icon;
+        state.farmLogo = null;
+        renderFarmMark();
+        renderIconPicker();
+        updateLogoPreview();
+        showToast('Farm icon updated');
+      }catch(e){ document.getElementById('farmSettingsErr').textContent = e.message; }
+    });
+  });
+}
+
+function updateLogoPreview(){
+  const wrap = document.getElementById('farmLogoPreviewWrap');
+  const img = document.getElementById('farmLogoPreview');
+  if (state.farmLogo){
+    img.src = state.farmLogo;
+    wrap.style.display = 'flex';
+  } else {
+    wrap.style.display = 'none';
+  }
+}
+
+// Resizes/compresses the image client-side before it ever leaves the
+// browser, so what gets stored (as a data URL, straight in the farms
+// table) stays small no matter how large the original photo was — no
+// server-side image library needed for that.
+function resizeImageFile(file, maxSize){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read that file.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('That file does not look like an image.'));
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('farmLogoInput').addEventListener('change', async (e)=>{
+  const err = document.getElementById('farmSettingsErr'); err.textContent = '';
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')){ err.textContent = 'Choose an image file.'; e.target.value = ''; return; }
+  try{
+    const dataUrl = await resizeImageFile(file, 160);
+    await api('/farm', { method:'PATCH', body:{ logo_image: dataUrl, icon_emoji: null } });
+    state.farmLogo = dataUrl;
+    state.farmIcon = null;
+    renderFarmMark();
+    renderIconPicker();
+    updateLogoPreview();
+    showToast('Farm logo updated');
+  }catch(err2){ err.textContent = err2.message; }
+  finally{ e.target.value = ''; }
+});
+
+document.getElementById('removeFarmLogoBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('farmSettingsErr'); err.textContent = '';
+  try{
+    await api('/farm', { method:'PATCH', body:{ logo_image: null } });
+    state.farmLogo = null;
+    renderFarmMark();
+    renderIconPicker();
+    updateLogoPreview();
+    showToast('Logo removed');
+  }catch(e){ err.textContent = e.message; }
+});
+
 document.getElementById('saveFarmSettingsBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('farmSettingsErr'); err.textContent = '';
+  const name = document.getElementById('farmNameInput').value.trim();
   const currency = document.getElementById('farmCurrency').value;
+  const country = document.getElementById('farmCountryInput').value.trim();
+  if (!name){ err.textContent = 'Farm name cannot be empty.'; return; }
   try{
-    await api('/farm', { method:'PATCH', body:{ currency } });
+    await api('/farm', { method:'PATCH', body:{ name, currency, country: country || null } });
     state.currency = currency;
+    state.farmName = name;
+    state.country = country || null;
+    document.getElementById('farmNameLabel').textContent = name;
+    document.getElementById('drawerFarmNameLabel').textContent = name;
     showToast('Farm settings saved');
     renderAll();
+  }catch(e){ err.textContent = e.message; }
+});
+
+// ---------------- EDIT TEAM MEMBER ----------------
+function openTeamEditModal(id){
+  const u = state.users.find(x=>x.id===id);
+  if (!u) return;
+  state.currentTeamEditId = id;
+  document.getElementById('teamEditName').value = u.name;
+  document.getElementById('teamEditPhone').value = u.phone;
+  document.getElementById('teamEditEmail').value = u.email || '';
+  document.getElementById('teamEditErr').textContent = '';
+  document.getElementById('teamEditModal').style.display = 'flex';
+}
+function closeTeamEditModal(){
+  document.getElementById('teamEditModal').style.display = 'none';
+  state.currentTeamEditId = null;
+}
+document.getElementById('closeTeamEditBtn').addEventListener('click', closeTeamEditModal);
+document.getElementById('saveTeamEditBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('teamEditErr'); err.textContent = '';
+  const name = document.getElementById('teamEditName').value.trim();
+  const phone = document.getElementById('teamEditPhone').value.trim();
+  const email = document.getElementById('teamEditEmail').value.trim();
+  if (!name){ err.textContent = 'Enter a name.'; return; }
+  if (!phone){ err.textContent = 'Enter a phone number.'; return; }
+  try{
+    await api('/users/'+state.currentTeamEditId, { method:'PATCH', body:{ name, phone, email: email || null } });
+    showToast('Saved');
+    closeTeamEditModal();
+    // Covers the case where the owner just edited their own row too — this
+    // re-fetches /me and refreshes the header/drawer labels along with the
+    // rest of the farm's data, not just the team list.
+    await enterApp();
+  }catch(e){ err.textContent = e.message; }
+});
+
+// ---------------- EDIT ANIMAL DETAILS ----------------
+document.getElementById('saveAnimalDetailsBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('modalAnEditErr'); err.textContent = '';
+  const tag_id = document.getElementById('modalAnTag').value.trim();
+  const species = document.getElementById('modalAnSpecies').value;
+  const breed = document.getElementById('modalAnBreed').value.trim();
+  const sex = document.getElementById('modalAnSex').value;
+  const dob = document.getElementById('modalAnDob').value || null;
+  const acquired_date = document.getElementById('modalAnAcquired').value || null;
+  const notes = document.getElementById('modalAnNotes').value.trim();
+  if (!tag_id){ err.textContent = 'Tag ID is required.'; return; }
+  try{
+    await api('/animals/'+state.currentAnimalId, { method:'PATCH', body:{ tag_id, species, breed, sex, dob, acquired_date, notes } });
+    showToast('Details saved');
+    const keepId = state.currentAnimalId;
+    await loadAll();
+    openAnimalModal(keepId);
+  }catch(e){ err.textContent = e.message; }
+});
+
+// ---------------- EDIT LOT DETAILS ----------------
+document.getElementById('saveLotDetailsBtn').addEventListener('click', async ()=>{
+  const err = document.getElementById('modalLotEditErr'); err.textContent = '';
+  const name = document.getElementById('modalLotName').value.trim();
+  const quantityRaw = document.getElementById('modalLotQuantity').value;
+  const start_date = document.getElementById('modalLotStartDate').value;
+  if (!name){ err.textContent = 'Give this lot a name or tag.'; return; }
+  if (!start_date){ err.textContent = 'Pick a start date.'; return; }
+  try{
+    await api('/broiler-lots/'+state.currentLotId, {
+      method:'PATCH',
+      body:{ name, quantity: quantityRaw || null, start_date }
+    });
+    showToast('Details saved');
+    const keepId = state.currentLotId;
+    await loadAll();
+    openLotModal(keepId);
   }catch(e){ err.textContent = e.message; }
 });
 
@@ -662,6 +922,14 @@ function openAnimalModal(id){
   document.getElementById('modalAnimalMeta').textContent =
     [animal.species, animal.breed, animal.sex, animal.dob ? 'born ' + animal.dob : null].filter(Boolean).join(' \u00b7 ');
   document.getElementById('modalStatus').value = animal.status;
+  document.getElementById('modalAnTag').value = animal.tag_id;
+  document.getElementById('modalAnSpecies').value = animal.species;
+  document.getElementById('modalAnBreed').value = animal.breed || '';
+  document.getElementById('modalAnSex').value = animal.sex || '';
+  document.getElementById('modalAnDob').value = animal.dob || '';
+  document.getElementById('modalAnAcquired').value = animal.acquired_date || '';
+  document.getElementById('modalAnNotes').value = animal.notes || '';
+  document.getElementById('modalAnEditErr').textContent = '';
   document.getElementById('evDate').value = todayStr();
   document.getElementById('animalModal').style.display = 'flex';
   loadEvents(id);
@@ -817,14 +1085,15 @@ function computeLotFinances(lot){
 function renderLotFinances(lot){
   const f = computeLotFinances(lot);
   const stats = [
-    { label:'Income', value: fmtMoney(f.income) },
-    { label:'Expenses', value: fmtMoney(f.expense) },
-    { label:'Net', value: fmtMoney(f.net) },
-    { label:'Birds sold', value: String(f.piecesSold) }
+    { label:'Income', value: fmtMoney(f.income), icon:'\u{1F4B0}', cls:'pos' },
+    { label:'Expenses', value: fmtMoney(f.expense), icon:'\u{1F4B8}', cls:'neg' },
+    { label:'Net', value: fmtMoney(f.net), icon:'⚖️', cls: f.net>=0?'pos':'neg' },
+    { label:'Birds sold', value: String(f.piecesSold), icon:'\u{1F414}', cls:'' }
   ];
-  if (f.piecesBought > 0) stats.push({ label:'Birds bought', value: String(f.piecesBought) });
+  if (f.piecesBought > 0) stats.push({ label:'Birds bought', value: String(f.piecesBought), icon:'\u{1F423}', cls:'' });
   document.getElementById('modalLotFinances').innerHTML = stats.map(s=>`
-    <div class="stat">
+    <div class="stat ${s.cls}">
+      <div class="stat-icon">${s.icon}</div>
       <div class="label">${s.label}</div>
       <div class="value">${s.value}</div>
     </div>`).join('');
@@ -841,6 +1110,10 @@ function openLotModal(id){
     [typeLabel, remaining != null ? `${remaining} of ${lot.quantity} birds remaining` : null, 'started ' + lot.start_date].filter(Boolean).join(' \u00b7 ');
   renderLotFinances(lot);
   document.getElementById('modalLotStatus').value = lot.status;
+  document.getElementById('modalLotName').value = lot.name;
+  document.getElementById('modalLotQuantity').value = lot.quantity || '';
+  document.getElementById('modalLotStartDate').value = lot.start_date;
+  document.getElementById('modalLotEditErr').textContent = '';
   document.getElementById('lotRemDate').value = todayStr();
   document.getElementById('mortDate').value = todayStr();
   document.getElementById('lotModal').style.display = 'flex';
@@ -1062,6 +1335,7 @@ function renderUsers(){
       <div><div class="name">${escapeHtml(u.name)}</div><div class="meta">${escapeHtml(u.phone)}</div></div>
       <div style="display:flex;align-items:center;gap:10px;">
         <span class="pill ${u.role==='owner' ? 'owe-me' : 'settled'}">${u.role}</span>
+        ${isOwner() ? `<button class="del" style="color:var(--leaf-700)" onclick="openTeamEditModal(${u.id})">Edit</button>` : ''}
         ${isOwner() && u.role !== 'owner' ? `<button class="del" onclick="removeUser(${u.id})">Remove</button>` : ''}
       </div>
     </div>`).join('');
@@ -1082,9 +1356,9 @@ function renderDash(){
   const expense = state.tx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
   const net = income - expense;
   document.getElementById('dashStats').innerHTML = `
-    <div class="stat ${net>=0?'pos':'neg'}"><div class="label">Net balance</div><div class="value">${fmtMoney(net)}</div></div>
-    <div class="stat pos"><div class="label">Total in</div><div class="value">${fmtMoney(income)}</div></div>
-    <div class="stat neg"><div class="label">Total out</div><div class="value">${fmtMoney(expense)}</div></div>
+    <div class="stat ${net>=0?'pos':'neg'}"><div class="stat-icon">⚖️</div><div class="label">Net balance</div><div class="value">${fmtMoney(net)}</div></div>
+    <div class="stat pos"><div class="stat-icon">\u{1F4C8}</div><div class="label">Total in</div><div class="value">${fmtMoney(income)}</div></div>
+    <div class="stat neg"><div class="stat-icon">\u{1F4C9}</div><div class="label">Total out</div><div class="value">${fmtMoney(expense)}</div></div>
   `;
   const owedToMe = state.debts.filter(d=>d.direction==='owed_to_me' && !d.settled).reduce((s,d)=>s+d.amount,0);
   const iOwe = state.debts.filter(d=>d.direction==='i_owe' && !d.settled).reduce((s,d)=>s+d.amount,0);
@@ -1095,9 +1369,9 @@ function renderDash(){
   const sold = state.animals.filter(a=>a.status==='sold').length;
   const deceased = state.animals.filter(a=>a.status==='deceased').length;
   document.getElementById('dashHerd').innerHTML = `
-    <div class="stat"><div class="label">Active</div><div class="value">${active}</div></div>
-    <div class="stat"><div class="label">Sold</div><div class="value">${sold}</div></div>
-    <div class="stat"><div class="label">Deceased</div><div class="value">${deceased}</div></div>
+    <div class="stat pos"><div class="stat-icon">\u{1F7E2}</div><div class="label">Active</div><div class="value">${active}</div></div>
+    <div class="stat"><div class="stat-icon">\u{1F4B5}</div><div class="label">Sold</div><div class="value">${sold}</div></div>
+    <div class="stat neg"><div class="stat-icon">✕</div><div class="label">Deceased</div><div class="value">${deceased}</div></div>
   `;
 }
 
