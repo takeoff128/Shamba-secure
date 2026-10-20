@@ -91,7 +91,7 @@
 
 <div id="appScreen" style="display:none">
   <div id="verifyBanner" class="card" style="display:none;margin:12px 16px 0;max-width:728px;margin-left:auto;margin-right:auto;">
-    <h2><span class="ic">📧</span> Verify your email</h2>
+    <h2>Verify your email</h2>
     <p class="note">We sent a 6-digit code to <span id="verifyEmailLabel"></span>. Enter it below to confirm this account is really yours \u2014 this is what lets you recover your password later.</p>
     <div class="row">
       <input type="text" id="verifyCodeInput" placeholder="6-digit code" maxlength="6">
@@ -102,7 +102,7 @@
     <button type="button" class="link-btn" id="resendCodeBtn">Resend code</button>
   </div>
   <div id="verifyPhoneBanner" class="card" style="display:none;margin:12px 16px 0;max-width:728px;margin-left:auto;margin-right:auto;">
-    <h2><span class="ic">📱</span> Verify your phone number</h2>
+    <h2>Verify your phone number</h2>
     <p class="note">We texted a 6-digit code to <span id="verifyPhoneLabel"></span>. Enter it below to confirm this number is really yours.</p>
     <div class="row">
       <input type="text" id="verifyPhoneCodeInput" placeholder="6-digit code" maxlength="6">
@@ -154,18 +154,18 @@
     <!-- DASHBOARD -->
     <section class="view active" id="dash">
       <div class="card">
-        <h2><span class="ic">📊</span> Where things stand</h2>
+        <h2>Where things stand</h2>
         <div class="grid-3" id="dashStats"></div>
       </div>
       <div class="card">
-        <h2><span class="ic">💵</span> Debt balance</h2>
+        <h2>Debt balance</h2>
         <div class="grid-2">
           <div class="stat pos"><div class="stat-icon">&#128176;</div><div class="label">Owed to you</div><div class="value" id="dashOwedToMe">0</div></div>
           <div class="stat neg"><div class="stat-icon">&#128228;</div><div class="label">You owe</div><div class="value" id="dashIOwe">0</div></div>
         </div>
       </div>
       <div class="card">
-        <h2><span class="ic">🐄</span> Herd snapshot</h2>
+        <h2>Herd snapshot</h2>
         <div class="grid-3" id="dashHerd"></div>
       </div>
     </section>
@@ -173,7 +173,7 @@
     <!-- FINANCE -->
     <section class="view" id="money">
       <div class="card">
-        <h2><span class="ic">💰</span> Add a transaction</h2>
+        <h2>Add a transaction</h2>
         <div class="seg" id="txTypeSeg">
           <button type="button" class="on" data-val="income">Money in</button>
           <button type="button" data-val="expense">Money out</button>
@@ -228,13 +228,13 @@
       </div>
 
       <div class="card">
-        <h2><span class="ic">📈</span> Sales by animal type</h2>
+        <h2>Sales by animal type</h2>
         <p class="note">Counts a sale as soon as it happens — including animals sold on credit, before the debt is even settled.</p>
         <div class="grid-3" id="animalSalesSummary"></div>
       </div>
 
       <div class="card">
-        <h2><span class="ic">📝</span> Add a debt</h2>
+        <h2>Add a debt</h2>
         <div class="seg" id="debtTypeSeg">
           <button type="button" class="on" data-val="owed_to_me">Someone owes me</button>
           <button type="button" data-val="i_owe">I owe someone</button>
@@ -295,7 +295,7 @@
     <!-- LIVESTOCK -->
     <section class="view" id="livestock">
       <div class="card">
-        <h2><span class="ic">🐾</span> Add an animal</h2>
+        <h2>Add an animal</h2>
         <div class="row">
           <div><label>Tag / name</label><input type="text" id="anTag" placeholder="e.g. Cow 014"></div>
           <div><label>Species</label>
@@ -313,13 +313,13 @@
         <div class="err" id="anErr"></div>
         <button class="btn" id="addAnimalBtn">Add animal</button>
       </div>
-      <div class="card"><h2><span class="ic">🐄</span> Your herd</h2><div id="animalList"></div></div>
+      <div class="card"><h2>Your herd</h2><div id="animalList"></div></div>
     </section>
 
     <!-- BROILERS -->
     <section class="view" id="broilers">
       <div class="card">
-        <h2><span class="ic">🐣</span> Start a new lot</h2>
+        <h2>Start a new lot</h2>
         <p class="note">Choose broilers or layers below \u2014 the right vaccination and feed-change schedule gets created automatically, dated from your start date.</p>
         <label>Lot name / tag</label>
         <input type="text" id="lotName" placeholder="e.g. Lot A - August batch">
@@ -336,11 +336,11 @@
         <button class="btn" id="addLotBtn">Start lot &amp; schedule reminders</button>
       </div>
       <div class="card">
-        <h2><span class="ic">📅</span> Default schedule</h2>
+        <h2>Default schedule</h2>
         <div id="scheduleRef"></div>
       </div>
       <div class="card">
-        <h2><span class="ic">🐔</span> Your lots</h2>
+        <h2>Your lots</h2>
         <div id="lotList"><div class="empty">No lots started yet.</div></div>
       </div>
     </section>
@@ -348,13 +348,13 @@
     <!-- REMINDERS -->
     <section class="view" id="reminders">
       <div class="card">
-        <h2><span class="ic">🔔</span> Notifications on this device</h2>
+        <h2>Notifications on this device</h2>
         <p class="note">Get an in-app alert here, in addition to SMS, whenever a reminder is sent. Works after adding this app to your home screen.</p>
         <div class="err" id="pushErr"></div>
         <button class="btn secondary" id="pushToggleBtn">Enable notifications on this device</button>
       </div>
       <div class="card">
-        <h2><span class="ic">⏰</span> Add a reminder</h2>
+        <h2>Add a reminder</h2>
         <p class="note">Everyone on this farm gets an SMS on the date you pick. Debts with a due date already get one automatically.</p>
         <label>Date</label>
         <input type="date" id="remDate">
@@ -375,7 +375,7 @@
     <!-- TEAM -->
     <section class="view" id="team">
       <div class="card" id="addWorkerCard">
-        <h2><span class="ic">👥</span> Add someone to your farm</h2>
+        <h2>Add someone to your farm</h2>
         <p class="note">They'll log in with their own phone number and password, and see the same farm records as you.</p>
         <label>Name</label>
         <input type="text" id="wName">
@@ -389,7 +389,7 @@
         <button class="btn" id="addWorkerBtn">Add to farm</button>
       </div>
       <div class="card">
-        <h2><span class="ic">👨‍🌾</span> People on this farm</h2>
+        <h2>People on this farm</h2>
         <p class="note" id="farmSettingsPointer" style="display:none;">Currency, farm name, and the farm icon/logo are under Profile &amp; farm settings in the menu.</p>
         <div class="list" id="userList"></div>
       </div>
@@ -401,16 +401,16 @@
 <div id="historyModal" class="modal-backdrop" style="display:none">
   <div class="modal" style="max-width:600px;">
     <div class="modal-head">
-      <h2><span class="ic">🕓</span> History</h2>
+      <h2>History</h2>
       <button class="del" id="closeHistoryBtn">Close</button>
     </div>
     <div id="txHistoryCard" style="margin-top:14px;">
-      <h3><span class="ic">💰</span> Transaction history</h3>
+      <h3>Transaction history</h3>
       <p class="note">Every transaction ever recorded for this farm, most recent first.</p>
       <div class="list" id="txHistoryList"></div>
     </div>
     <div id="debtHistoryCard" style="margin-top:22px;">
-      <h3><span class="ic">📝</span> Debt history</h3>
+      <h3>Debt history</h3>
       <p class="note">Every debt ever recorded for this farm, including settled ones.</p>
       <div class="list" id="debtHistoryList"></div>
     </div>
@@ -421,18 +421,18 @@
 <div id="profileModal" class="modal-backdrop" style="display:none">
   <div class="modal">
     <div class="modal-head">
-      <h2><span class="ic">👤</span> Profile &amp; farm settings</h2>
+      <h2>Profile &amp; farm settings</h2>
       <button class="del" id="closeProfileBtn">Close</button>
     </div>
 
-    <h3><span class="ic">👤</span> Your name</h3>
+    <h3>Your name</h3>
     <label>Name</label>
     <input type="text" id="profileName">
     <div class="err" id="profileNameErr"></div>
     <button class="btn secondary small" id="saveProfileNameBtn">Save name</button>
 
     <div id="farmSettingsOwnerOnly">
-      <h3 style="margin-top:22px"><span class="ic">🏡</span> Farm</h3>
+      <h3 style="margin-top:22px">Farm</h3>
       <label>Farm name</label>
       <input type="text" id="farmNameInput">
       <label>Currency</label>
@@ -461,7 +461,7 @@
 <div id="txEditModal" class="modal-backdrop" style="display:none">
   <div class="modal">
     <div class="modal-head">
-      <h2><span class="ic">✏️</span> Edit transaction</h2>
+      <h2>Edit transaction</h2>
       <button class="del" id="closeTxEditBtn">Close</button>
     </div>
     <div class="seg" id="txEditTypeSeg">
@@ -514,7 +514,7 @@
 <div id="debtEditModal" class="modal-backdrop" style="display:none">
   <div class="modal">
     <div class="modal-head">
-      <h2><span class="ic">✏️</span> Edit debt</h2>
+      <h2>Edit debt</h2>
       <button class="del" id="closeDebtEditBtn">Close</button>
     </div>
     <p class="note" id="debtEditSettledNote" style="display:none;">This debt is settled &mdash; amount, direction, and animal details are locked. Mark it unsettled first to change those.</p>
@@ -568,7 +568,7 @@
 <div id="teamEditModal" class="modal-backdrop" style="display:none">
   <div class="modal">
     <div class="modal-head">
-      <h2><span class="ic">✏️</span> Edit person</h2>
+      <h2>Edit person</h2>
       <button class="del" id="closeTeamEditBtn">Close</button>
     </div>
     <label>Name</label>
@@ -604,7 +604,7 @@
       </div>
     </div>
 
-    <h3 style="margin-top:18px"><span class="ic">✏️</span> Edit details</h3>
+    <h3 style="margin-top:18px">Edit details</h3>
     <div class="row">
       <div><label>Tag / name</label><input type="text" id="modalAnTag"></div>
       <div><label>Species</label>
@@ -624,7 +624,7 @@
     <div class="err" id="modalAnEditErr"></div>
     <button class="btn secondary small" id="saveAnimalDetailsBtn">Save details</button>
 
-    <h3 style="margin-top:18px"><span class="ic">📋</span> Add a record</h3>
+    <h3 style="margin-top:18px">Add a record</h3>
     <div class="row">
       <div>
         <label>Type</label>
@@ -648,7 +648,7 @@
     <div class="err" id="evErr"></div>
     <button class="btn" id="addEventBtn">Save record</button>
 
-    <h3 style="margin-top:18px"><span class="ic">🕓</span> History</h3>
+    <h3 style="margin-top:18px">History</h3>
     <div class="list" id="eventList"></div>
   </div>
 </div>
@@ -662,7 +662,7 @@
     </div>
     <div id="modalLotMeta" class="note"></div>
 
-    <h3 style="margin-top:18px"><span class="ic">💵</span> Lot finances</h3>
+    <h3 style="margin-top:18px">Lot finances</h3>
     <p class="note">Totals from every transaction and debt tagged to this lot — a sale counts as soon as it's recorded, even on credit, before the debt is settled.</p>
     <div class="grid-3" id="modalLotFinances"></div>
 
@@ -679,7 +679,7 @@
       </div>
     </div>
 
-    <h3 style="margin-top:18px"><span class="ic">✏️</span> Edit details</h3>
+    <h3 style="margin-top:18px">Edit details</h3>
     <p class="note">Changing the start date moves every not-yet-sent reminder in the schedule below to match.</p>
     <label>Lot name / tag</label>
     <input type="text" id="modalLotName">
@@ -690,7 +690,7 @@
     <div class="err" id="modalLotEditErr"></div>
     <button class="btn secondary small" id="saveLotDetailsBtn">Save details</button>
 
-    <h3 style="margin-top:18px"><span class="ic">⚠️</span> Record a loss</h3>
+    <h3 style="margin-top:18px">Record a loss</h3>
     <div class="row">
       <div><label>Date</label><input type="date" id="mortDate"></div>
       <div><label>Number lost</label><input type="number" id="mortQty" min="1"></div>
@@ -701,7 +701,7 @@
     <button class="btn secondary" id="addMortBtn">Record loss</button>
     <div class="list" id="mortalityList" style="margin-top:10px"></div>
 
-    <h3 style="margin-top:18px"><span class="ic">⏰</span> Add an extra reminder for this lot</h3>
+    <h3 style="margin-top:18px">Add an extra reminder for this lot</h3>
     <div class="row">
       <div>
         <label>Date</label>
@@ -715,7 +715,7 @@
     <div class="err" id="lotRemErr"></div>
     <button class="btn secondary" id="lotRemBtn">Save reminder</button>
 
-    <h3 style="margin-top:18px"><span class="ic">📅</span> Full schedule for this lot</h3>
+    <h3 style="margin-top:18px">Full schedule for this lot</h3>
     <div class="list" id="lotReminderList"></div>
   </div>
 </div>

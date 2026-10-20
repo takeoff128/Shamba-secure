@@ -53,14 +53,6 @@ h1{font-size:20px;margin:0;font-weight:600;}
 
 .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:10px 0;}
 .seg button{flex:1;padding:9px;border:none;background:var(--white);color:var(--ink-soft);cursor:pointer;font-weight:600;font-size:13px;transition:background .15s,color .15s;}
-.seg button[data-val="login"]::before{content:"\1F510 ";}
-.seg button[data-val="register"]::before{content:"\1F331 ";}
-.seg button[data-val="email"]::before{content:"\2709\FE0F ";}
-.seg button[data-val="phone"]::before{content:"\1F4F1 ";}
-.seg button[data-val="income"]::before{content:"\2B06\FE0F ";}
-.seg button[data-val="expense"]::before{content:"\2B07\FE0F ";}
-.seg button[data-val="owed_to_me"]::before{content:"\1F4B0 ";}
-.seg button[data-val="i_owe"]::before{content:"\1F4E4 ";}
 .seg button.on{background:linear-gradient(135deg, var(--leaf-700), var(--leaf-600));color:#fff;}
 .seg button:disabled{background:var(--paper-2);color:var(--ink-soft);cursor:not-allowed;opacity:.6;}
 
@@ -167,25 +159,15 @@ section.view.active{display:block;}
 .amt.minus{color:var(--rust-600);}
 .pill{font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;}
 .pill.owe-me{background:var(--gold-100);color:#7a5417;}
-.pill.owe-me::before{content:"\1F4B0";}
 .pill.i-owe{background:var(--rust-100);color:#7a2f18;}
-.pill.i-owe::before{content:"\1F4E4";}
 .pill.settled{background:#e2e8dc;color:#5c6650;}
-.pill.settled::before{content:"\2705";}
 .pill.active{background:var(--gold-100);color:#7a5417;}
-.pill.active::before{content:"\1F7E2";}
 .pill.sold{background:#e2e8dc;color:#5c6650;}
-.pill.sold::before{content:"\1F4B5";}
 .pill.deceased{background:var(--rust-100);color:#7a2f18;}
-.pill.deceased::before{content:"\2715";}
 .empty{padding:26px 0;text-align:center;color:var(--ink-soft);font-size:13px;}
-.empty::before{content:"\1F33F";display:block;font-size:22px;margin-bottom:6px;opacity:.6;}
 .del{background:none;border:none;color:var(--rust-600);cursor:pointer;font-size:12px;font-weight:600;padding:2px 4px;border-radius:5px;transition:background .12s;}
 .del:hover{background:rgba(163,45,45,0.08);}
 .del[style*="leaf-700"]:hover{background:rgba(61,92,49,0.1);}
-.del[onclick^="open"]::before{content:"\270F\FE0F ";}
-.del[onclick^="toggleSettle"]::before{content:"\1F501 ";}
-.del:not([onclick^="open"]):not([onclick^="toggleSettle"])::before{content:"\1F5D1\FE0F ";}
 
 .animal-card{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--white);cursor:pointer;
   box-shadow:var(--shadow-sm);transition:transform .12s,box-shadow .12s;}
@@ -203,28 +185,6 @@ section.view.active{display:block;}
 .toast{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
   background:linear-gradient(135deg, var(--soil-900), var(--leaf-700));color:var(--gold-100);
   padding:11px 20px;border-radius:9px;text-align:center;font-size:13px;display:none;z-index:100;max-width:calc(100% - 32px);box-shadow:var(--shadow-md);}
-
-/* Small icon prefixes on the app's main action buttons — purely
-   decorative, so they're added here via ::before rather than touching
-   every template in app.js. */
-#loginBtn::before{content:"\1F510 ";}
-#regBtn::before{content:"\1F331 ";}
-#forgotBtn::before{content:"\2709\FE0F ";}
-#verifyCodeBtn::before, #verifyPhoneCodeBtn::before{content:"\2705 ";}
-#addTxBtn::before, #addDebtBtn::before, #addReminderBtn::before, #saveTxEditBtn::before,
-#saveDebtEditBtn::before, #saveTeamEditBtn::before, #addEventBtn::before,
-#saveProfileNameBtn::before, #saveFarmSettingsBtn::before, #saveAnimalDetailsBtn::before,
-#saveLotDetailsBtn::before, #lotRemBtn::before{content:"\1F4BE ";}
-#addAnimalBtn::before{content:"\2795 ";}
-#addLotBtn::before{content:"\1F423 ";}
-#addWorkerBtn::before{content:"\1F464 ";}
-#modalStatusBtn::before, #modalLotStatusBtn::before{content:"\1F504 ";}
-#addMortBtn::before{content:"\1F4C9 ";}
-#runNowBtn::before{content:"\1F4E8 ";}
-#pushToggleBtn::before{content:"\1F514 ";}
-#logoutBtn::before{content:"\1F6AA ";}
-#clearTxBtn::before, #clearDebtsBtn::before{content:"\1F9F9 ";}
-#pickContactBtn::before{content:"\1F4D6 ";}
 
 .icon-picker{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
 .icon-picker button{width:42px;height:42px;border-radius:10px;border:2px solid var(--line);background:var(--white);
