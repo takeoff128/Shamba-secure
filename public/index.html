@@ -13,14 +13,27 @@
 <body>
 
 <div id="authScreen" class="auth-wrap">
-  <div class="auth-card">
-    <div class="brand-row">
-      <div class="mark">&#128274;</div>
-      <div>
-        <h1>Shamba Secure</h1>
-        <div class="tagline">Your farm's money and livestock records, private to your farm.</div>
-      </div>
+  <div class="auth-bg" aria-hidden="true">
+    <svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMax slice">
+      <path d="M0 230 Q100 190 200 215 T400 200 V300 H0Z" fill="rgba(255,255,255,0.05)"/>
+      <path d="M0 255 Q120 220 220 245 T400 235 V300 H0Z" fill="rgba(255,255,255,0.06)"/>
+      <path d="M0 280 Q140 255 260 272 T400 266 V300 H0Z" fill="rgba(0,0,0,0.12)"/>
+    </svg>
+  </div>
+  <div class="auth-inner">
+    <div class="auth-hero">
+      <svg class="auth-logo" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="30" fill="#1c2a1a" stroke="#d4a24c" stroke-width="3"/>
+        <path d="M32 46V28" stroke="#d4a24c" stroke-width="3" stroke-linecap="round"/>
+        <path d="M32 31C32 22 26 17 17 17c0 9 5 15 15 14z" fill="#d4a24c"/>
+        <path d="M32 27c0-8 5-12 14-12 0 8-5 13-14 12z" fill="#e6bb6a"/>
+      </svg>
+      <h1>Shamba Secure</h1>
+      <div class="tagline">Your farm's money and livestock records, private to your farm.</div>
     </div>
+  <div class="auth-card">
+    <div class="auth-welcome" id="authWelcome">Welcome back</div>
+    <div class="auth-sub" id="authSub">Log in to see how your farm is doing.</div>
 
     <div class="seg" id="authModeSeg">
       <button type="button" class="on" data-val="login">Log in</button>
@@ -29,7 +42,7 @@
 
     <div id="loginForm">
       <label>Phone number or email</label>
-      <input type="text" id="loginPhone" placeholder="07XX XXX XXX or you@example.com">
+      <input type="text" id="loginPhone" placeholder="Phone or email">
       <label>Password</label>
       <input type="password" id="loginPassword" placeholder="Your password">
       <div class="err" id="loginErr"></div>
@@ -62,10 +75,10 @@
       <input type="text" id="regFarmName" placeholder="e.g. Kamau Family Farm">
       <label>Your name</label>
       <input type="text" id="regName" placeholder="Full name">
-      <label>Currency</label>
-      <select id="regCurrency"></select>
-      <label>Phone number</label>
-      <input type="text" id="regPhone" placeholder="07XX XXX XXX">
+      <div class="row">
+        <div><label>Currency</label><select id="regCurrency"></select></div>
+        <div><label>Phone number</label><input type="text" id="regPhone" placeholder="07XX XXX XXX"></div>
+      </div>
       <label>Email address</label>
       <input type="email" id="regEmail" placeholder="you@example.com">
       <label>Password</label>
@@ -86,6 +99,12 @@
       <button class="btn" id="regBtn">Create farm account</button>
       <p class="note" style="text-align:center;margin-top:10px;">By continuing you agree to our <a href="/privacy.html" target="_blank">privacy policy</a>.</p>
     </div>
+  </div>
+  <ul class="auth-points">
+    <li>Track income, expenses and debts</li>
+    <li>Herds, broilers and layers in one place</li>
+    <li>Reminders sent to your phone</li>
+  </ul>
   </div>
 </div>
 

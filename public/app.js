@@ -1654,3 +1654,22 @@ document.getElementById('saveDebtEditBtn').addEventListener('click', async ()=>{
     await loadAll();
   }catch(e){ err.textContent = e.message; }
 });
+
+
+// ---- Login/register polish: show/hide password + mode-aware heading ----
+(function(){
+  ['loginPassword','regPassword','forgotNewPassword','forgotConfirmPassword'].forEach(id=>{
+    const inp=document.getElementById(id); if(!inp) return;
+    const wrap=document.createElement('div'); wrap.className='pw-wrap';
+    inp.parentNode.insertBefore(wrap,inp); wrap.appendChild(inp);
+    const b=document.createElement('button'); b.type='button'; b.className='pw-toggle'; b.textContent='Show';
+    b.addEventListener('click',()=>{const s=inp.type==='password'; inp.type=s?'text':'password'; b.textContent=s?'Hide':'Show';});
+    wrap.appendChild(b);
+  });
+  const t=document.getElementById('authWelcome'), s=document.getElementById('authSub');
+  const copy={login:['Welcome back','Log in to see how your farm is doing.'],
+              register:['Start your farm','Set up your account in about a minute.']};
+  document.querySelectorAll('#authModeSeg button').forEach(b=>b.addEventListener('click',()=>{
+    const c=copy[b.dataset.val]; if(c&&t&&s){t.textContent=c[0]; s.textContent=c[1];}
+  }));
+})();
