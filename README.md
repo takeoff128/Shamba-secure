@@ -271,6 +271,17 @@ repo, and be sure to:
 - Password reset codes are single-use, expire after 15 minutes, and the
   forgot-password endpoint never reveals whether an account is
   registered.
+- Login, registration, and every 6-digit code endpoint (send/verify for
+  email and phone, password reset) are rate-limited per IP and per
+  identifier — see `security.js`. This blunts both password-guessing and
+  guessing a 6-digit code outright inside its 15-minute window.
+- The admin delete-account endpoint compares `ADMIN_SECRET` with a
+  constant-time check, so a wrong guess can't be narrowed down one
+  character at a time via response timing.
+- `app.set('trust proxy', 1)` is set in production, since Railway/Render/
+  Fly.io all sit the app behind a reverse proxy — without it every
+  request looks like it comes from the proxy, which would make the
+  per-IP rate limits above meaningless.
 - Change `JWT_SECRET` to a real random value before going live.
 
 ## Extending it

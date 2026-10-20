@@ -11,14 +11,50 @@ const { BROILER_SCHEDULE, SCHEDULES, getSchedule, createLotReminders } = require
 const { CURRENCIES } = require('./currency');
 const { sendPasswordResetCodeEmail, sendVerificationCodeEmail } = require('./email');
 const { isConfigured: pushConfigured, VAPID_PUBLIC_KEY } = require('./webpush');
+const { rateLimit, securityHeaders } = require('./security');
 const cron = require('node-cron');
 
 const app = express();
+// Railway/Render/Fly.io (see README "Deploying") sit the app behind a
+// reverse proxy, so without this every request looks like it comes from the
+// proxy's own IP — that would make the per-IP rate limits below either
+// useless (everyone sharing one bucket) or a way to lock out the whole app.
+// trust proxy is only meaningful, and only safe, once an actual proxy is in
+// front of the app, which is why it's gated to production.
+if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+app.use(securityHeaders);
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
+
+// Auth-sensitive endpoints get their own, tighter limits — these are the
+// ones an attacker would script against to guess a password or a 6-digit
+// code. Keyed by IP plus whatever identifier/contact the request names, so
+// one shared IP (an office, a NAT) can't be used to lock other people on
+// that same IP out of their own accounts, and one phone/email can't be
+// hammered from many IPs either.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10,
+  keyFn: req => `login:${req.ip}:${(req.body && req.body.identifier) || ''}`,
+  message: 'Too many login attempts. Please wait a few minutes and try again.'
+});
+const codeRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 6,
+  keyFn: req => `send-code:${req.ip}:${(req.body && (req.body.contact || req.body.identifier)) || ''}`,
+  message: 'Too many code requests. Please wait a few minutes and try again.'
+});
+const codeVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10,
+  keyFn: req => `verify-code:${req.ip}:${(req.body && (req.body.identifier || req.body.code)) || ''}`,
+  message: 'Too many attempts. Please wait a few minutes and try again.'
+});
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10,
+  keyFn: req => `register:${req.ip}`,
+  message: 'Too many registration attempts from this connection. Please wait a few minutes and try again.'
+});
 
 function badRequest(res, msg) { return res.status(400).json({ error: msg }); }
 
@@ -56,7 +92,7 @@ async function issuePhoneVerificationCode(userId, phone, farmName) {
 // exists, so registration can require proof of ownership as part of the
 // same form. Also used for "resend code" — calling it again with the same
 // channel/contact just overwrites the pending code.
-app.post('/api/register/send-code', async (req, res) => {
+app.post('/api/register/send-code', codeRequestLimiter, async (req, res) => {
   const { channel, contact, farmName } = req.body || {};
   if (!['email', 'phone'].includes(channel)) return badRequest(res, 'Invalid verification channel.');
   if (!contact) return badRequest(res, channel === 'email' ? 'Enter your email address.' : 'Enter your phone number.');
@@ -88,7 +124,7 @@ app.post('/api/register/send-code', async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', registerLimiter, async (req, res) => {
   const { farmName, name, phone, email, password, currency, country, code, verify_channel } = req.body || {};
   if (!farmName || !name || !phone || !email || !password) return badRequest(res, 'All fields are required.');
   if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
@@ -182,7 +218,7 @@ app.delete('/api/users/:id', requireAuth, requireOwner, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', loginLimiter, (req, res) => {
   const { identifier, password } = req.body || {};
   if (!identifier || !password) return badRequest(res, 'Enter your phone or email, and your password.');
 
@@ -225,7 +261,7 @@ app.patch('/api/farm', requireAuth, requireOwner, (req, res) => {
 
 // ---------------- PASSWORD RESET ----------------
 
-app.post('/api/forgot-password', async (req, res) => {
+app.post('/api/forgot-password', codeRequestLimiter, async (req, res) => {
   const { identifier } = req.body || {};
   if (!identifier) return badRequest(res, 'Enter your phone number or email address.');
 
@@ -259,7 +295,7 @@ app.post('/api/forgot-password', async (req, res) => {
   res.json(genericResponse);
 });
 
-app.post('/api/reset-password', (req, res) => {
+app.post('/api/reset-password', codeVerifyLimiter, (req, res) => {
   const { identifier, code, password } = req.body || {};
   if (!identifier || !code || !password) return badRequest(res, 'Missing your phone/email, code, or new password.');
   if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
@@ -278,7 +314,7 @@ app.post('/api/reset-password', (req, res) => {
 
 // ---------------- EMAIL VERIFICATION ----------------
 
-app.post('/api/verify-email', requireAuth, (req, res) => {
+app.post('/api/verify-email', requireAuth, codeVerifyLimiter, (req, res) => {
   const { code } = req.body || {};
   if (!code) return badRequest(res, 'Enter the code from your email.');
 
@@ -297,7 +333,7 @@ app.post('/api/verify-email', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/resend-verification', requireAuth, async (req, res) => {
+app.post('/api/resend-verification', requireAuth, codeRequestLimiter, async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.userId);
   if (user.email_verified) return res.json({ ok: true, alreadyVerified: true });
   if (!user.email) return badRequest(res, 'No email address on this account to verify.');
@@ -307,7 +343,7 @@ app.post('/api/resend-verification', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/verify-phone', requireAuth, (req, res) => {
+app.post('/api/verify-phone', requireAuth, codeVerifyLimiter, (req, res) => {
   const { code } = req.body || {};
   if (!code) return badRequest(res, 'Enter the code from your text message.');
 
@@ -326,7 +362,7 @@ app.post('/api/verify-phone', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/resend-phone-verification', requireAuth, async (req, res) => {
+app.post('/api/resend-phone-verification', requireAuth, codeRequestLimiter, async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.userId);
   if (user.phone_verified) return res.json({ ok: true, alreadyVerified: true });
 
@@ -866,7 +902,13 @@ app.post('/api/reminders/run-now', requireAuth, requireOwner, async (req, res) =
 app.post('/api/admin/delete-account', (req, res) => {
   if (!process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Not enabled.' });
   const { secret, identifier } = req.body || {};
-  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Invalid secret.' });
+  // Constant-time compare — a plain !== leaks how many leading characters
+  // matched through response timing, which turns guessing the secret into a
+  // byte-at-a-time search instead of a brute force over the whole thing.
+  const expected = Buffer.from(String(process.env.ADMIN_SECRET));
+  const given = Buffer.from(String(secret || ''));
+  const secretOk = expected.length === given.length && crypto.timingSafeEqual(expected, given);
+  if (!secretOk) return res.status(403).json({ error: 'Invalid secret.' });
   if (!identifier) return badRequest(res, 'Provide the phone or email to delete.');
 
   const user = db.prepare('SELECT id, farm_id, phone, email FROM users WHERE email = ? OR phone = ?').get(identifier, identifier);

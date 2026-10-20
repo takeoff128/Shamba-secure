@@ -433,11 +433,26 @@ function renderLotSelects(){
 
 // ---------------- TRANSACTIONS ----------------
 document.getElementById('txDate').value = todayStr();
+// Animal type/pieces only makes sense for money coming IN (an animal sale) —
+// "Sales by animal type" only ever counts income anyway, so there's nothing
+// for it to do on an expense. Hide it there, and clear any stale value so
+// switching to Money out never silently submits a leftover animal tag.
 let txType = 'income';
+function updateTxAnimalRowVisibility(){
+  const show = txType === 'income';
+  document.getElementById('txAnimalRow').style.display = show ? 'flex' : 'none';
+  if (!show){
+    document.getElementById('txLivestockType').value = '';
+    document.getElementById('txQuantity').value = '';
+    document.getElementById('txQuantityLabel').style.display = 'none';
+    document.getElementById('txQuantity').style.display = 'none';
+  }
+}
 document.querySelectorAll('#txTypeSeg button').forEach(b=>{
   b.addEventListener('click', ()=>{
     document.querySelectorAll('#txTypeSeg button').forEach(x=>x.classList.remove('on'));
     b.classList.add('on'); txType = b.dataset.val;
+    updateTxAnimalRowVisibility();
   });
 });
 document.getElementById('txLivestockType').addEventListener('change', ()=>{
@@ -1197,10 +1212,21 @@ function renderAnimals(){
 let txEditType = 'income';
 let txEditId = null;
 
+function updateTxEditAnimalRowVisibility(){
+  const show = txEditType === 'income';
+  document.getElementById('txEditAnimalRow').style.display = show ? 'flex' : 'none';
+  if (!show){
+    document.getElementById('txEditLivestockType').value = '';
+    document.getElementById('txEditQuantity').value = '';
+    document.getElementById('txEditQuantityLabel').style.display = 'none';
+    document.getElementById('txEditQuantity').style.display = 'none';
+  }
+}
 document.querySelectorAll('#txEditTypeSeg button').forEach(b=>{
   b.addEventListener('click', ()=>{
     document.querySelectorAll('#txEditTypeSeg button').forEach(x=>x.classList.remove('on'));
     b.classList.add('on'); txEditType = b.dataset.val;
+    updateTxEditAnimalRowVisibility();
   });
 });
 document.getElementById('txEditLivestockType').addEventListener('change', ()=>{
@@ -1215,6 +1241,7 @@ function openTxEditModal(id){
   txEditId = id;
   txEditType = t.type;
   document.querySelectorAll('#txEditTypeSeg button').forEach(b=>b.classList.toggle('on', b.dataset.val === t.type));
+  updateTxEditAnimalRowVisibility();
   document.getElementById('txEditAmount').value = t.amount;
   document.getElementById('txEditDesc').value = t.description || '';
   document.getElementById('txEditCategory').value = t.category || 'Other';
