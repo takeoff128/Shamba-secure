@@ -243,6 +243,7 @@
           <h2 style="margin:0">Recent transactions</h2>
           <button class="btn secondary small" id="clearTxBtn" style="display:none;color:var(--rust-600);border-color:var(--rust-600);">Clear all</button>
         </div>
+        <div class="lot-filter" data-lot-filter></div>
         <div class="list" id="txList"></div>
       </div>
 
@@ -307,6 +308,7 @@
           <h2 style="margin:0">Debt ledger</h2>
           <button class="btn secondary small" id="clearDebtsBtn" style="display:none;color:var(--rust-600);border-color:var(--rust-600);">Clear all</button>
         </div>
+        <div class="lot-filter" data-lot-filter></div>
         <div class="list" id="debtList"></div>
       </div>
     </section>
@@ -361,6 +363,26 @@
       <div class="card">
         <h2>Your lots</h2>
         <div id="lotList"><div class="empty">No lots started yet.</div></div>
+      </div>
+      <div class="card" id="perfCard">
+        <h2>Lot performance</h2>
+        <p class="note">Compare lots, or look inside one. Figures come from the transactions and debts you tagged to each lot.</p>
+        <div class="row">
+          <div><label>Lot</label><select id="perfScope"></select></div>
+          <div><label>Show</label>
+            <select id="perfMetric">
+              <option value="expense">Expenses</option>
+              <option value="income">Income</option>
+            </select>
+          </div>
+        </div>
+        <div class="seg" id="perfChartSeg">
+          <button type="button" class="on" data-val="bar">Bar graph</button>
+          <button type="button" data-val="pie">Pie chart</button>
+        </div>
+        <div class="grid-3" id="perfStats"></div>
+        <div class="chart-wrap" id="perfChart"></div>
+        <div class="chart-legend" id="perfLegend"></div>
       </div>
     </section>
 
@@ -423,6 +445,7 @@
       <h2>History</h2>
       <button class="del" id="closeHistoryBtn">Close</button>
     </div>
+    <div class="lot-filter" data-lot-filter></div>
     <div id="txHistoryCard" style="margin-top:14px;">
       <h3>Transaction history</h3>
       <p class="note">Every transaction ever recorded for this farm, most recent first.</p>

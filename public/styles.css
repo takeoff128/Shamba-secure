@@ -216,3 +216,20 @@ section.view.active{display:block;}
 .icon-picker button.on{border-color:var(--gold-600);background:var(--gold-100);}
 .logo-preview-row{display:flex;align-items:center;gap:12px;}
 .logo-preview-row img{width:56px;height:56px;border-radius:12px;object-fit:cover;border:1px solid var(--line);}
+
+/* ---- Lot filter + performance charts ---- */
+.lot-filter{margin:8px 0 10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);}
+.lot-filter select{padding:9px 10px;}
+.lot-filter .lf-check{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-soft);margin-top:8px;font-weight:600;}
+.lot-filter .lf-check input{width:auto;}
+.lot-summary{margin-top:8px;font-size:12px;color:var(--ink-soft);line-height:1.5;}
+.lot-summary b{color:var(--ink);}
+.lot-summary .pos{color:var(--leaf-700);font-weight:700;}
+.lot-summary .neg{color:var(--rust-600);font-weight:700;}
+.chart-wrap{margin-top:12px;overflow-x:auto;}
+.chart-wrap svg{display:block;width:100%;height:auto;max-width:520px;margin:0 auto;}
+.chart-legend{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+.chart-legend .lg{display:flex;align-items:center;gap:8px;font-size:13px;}
+.chart-legend .sw{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
+.chart-legend .lg-v{margin-left:auto;font-weight:700;color:var(--ink);white-space:nowrap;}
+#perfStats{margin-top:10px;}

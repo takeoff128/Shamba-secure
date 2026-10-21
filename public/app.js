@@ -674,6 +674,7 @@ function renderAll(){
   renderDash(); renderTx(); renderDebts(); renderAnimals(); renderUsers(); renderReminders();
   renderScheduleRef(); renderLots(); renderAnimalSalesSummary(); renderLotSelects();
   renderTxHistory(); renderDebtHistory();
+  renderLotFilters(); renderPerformance();
 }
 
 // Fills the "Lot (optional)" dropdowns on the transaction/debt add & edit
@@ -1107,7 +1108,7 @@ function openLotModal(id){
   const typeLabel = lot.poultry_type === 'layer' ? 'Layers' : 'Broilers';
   document.getElementById('modalLotTitle').textContent = lot.name;
   document.getElementById('modalLotMeta').textContent =
-    [typeLabel, remaining != null ? `${remaining} of ${lot.quantity} birds remaining` : null, 'started ' + lot.start_date].filter(Boolean).join(' \u00b7 ');
+    [typeLabel, remaining != null ? `${remaining} of ${lot.quantity} birds remaining` : null, 'started ' + lot.start_date, 'matures ' + lotMaturityDate(lot)].filter(Boolean).join(' \u00b7 ');
   renderLotFinances(lot);
   document.getElementById('modalLotStatus').value = lot.status;
   document.getElementById('modalLotName').value = lot.name;
@@ -1426,12 +1427,13 @@ document.getElementById('closeHistoryBtn').addEventListener('click', ()=>{
 
 function renderTx(){
   const el = document.getElementById('txList');
-  if (state.tx.length===0){ el.innerHTML = '<div class="empty">No transactions yet.</div>'; return; }
-  const shown = state.tx.slice(0, HISTORY_PREVIEW_LIMIT);
+  const all = filteredTx();
+  if (all.length===0){ el.innerHTML = '<div class="empty">' + (isLotFiltered() ? 'No transactions match this lot.' : 'No transactions yet.') + '</div>'; return; }
+  const shown = all.slice(0, HISTORY_PREVIEW_LIMIT);
   let html = shown.map(txRowHtml).join('');
-  if (state.tx.length > HISTORY_PREVIEW_LIMIT){
+  if (all.length > HISTORY_PREVIEW_LIMIT){
     html += `<div style="text-align:center;padding-top:10px;">
-      <button class="link-btn" onclick="goToHistory('transactions')">View all ${state.tx.length} transactions &rarr;</button>
+      <button class="link-btn" onclick="goToHistory('transactions')">View all ${all.length} transactions &rarr;</button>
     </div>`;
   }
   el.innerHTML = html;
@@ -1439,12 +1441,13 @@ function renderTx(){
 
 function renderDebts(){
   const el = document.getElementById('debtList');
-  if (state.debts.length===0){ el.innerHTML = '<div class="empty">No debts recorded.</div>'; return; }
-  const shown = state.debts.slice(0, HISTORY_PREVIEW_LIMIT);
+  const all = filteredDebts();
+  if (all.length===0){ el.innerHTML = '<div class="empty">' + (isLotFiltered() ? 'No debts match this lot.' : 'No debts recorded.') + '</div>'; return; }
+  const shown = all.slice(0, HISTORY_PREVIEW_LIMIT);
   let html = shown.map(debtRowHtml).join('');
-  if (state.debts.length > HISTORY_PREVIEW_LIMIT){
+  if (all.length > HISTORY_PREVIEW_LIMIT){
     html += `<div style="text-align:center;padding-top:10px;">
-      <button class="link-btn" onclick="goToHistory('debts')">View all ${state.debts.length} debts &rarr;</button>
+      <button class="link-btn" onclick="goToHistory('debts')">View all ${all.length} debts &rarr;</button>
     </div>`;
   }
   el.innerHTML = html;
@@ -1453,17 +1456,19 @@ function renderDebts(){
 function renderTxHistory(){
   const el = document.getElementById('txHistoryList');
   if (!el) return;
-  el.innerHTML = state.tx.length === 0
-    ? '<div class="empty">No transactions yet.</div>'
-    : state.tx.map(txRowHtml).join('');
+  const all = filteredTx();
+  el.innerHTML = all.length === 0
+    ? '<div class="empty">' + (isLotFiltered() ? 'No transactions match this lot.' : 'No transactions yet.') + '</div>'
+    : all.map(txRowHtml).join('');
 }
 
 function renderDebtHistory(){
   const el = document.getElementById('debtHistoryList');
   if (!el) return;
-  el.innerHTML = state.debts.length === 0
-    ? '<div class="empty">No debts recorded.</div>'
-    : state.debts.map(debtRowHtml).join('');
+  const all = filteredDebts();
+  el.innerHTML = all.length === 0
+    ? '<div class="empty">' + (isLotFiltered() ? 'No debts match this lot.' : 'No debts recorded.') + '</div>'
+    : all.map(debtRowHtml).join('');
 }
 
 function renderAnimals(){
@@ -1673,3 +1678,219 @@ document.getElementById('saveDebtEditBtn').addEventListener('click', async ()=>{
     const c=copy[b.dataset.val]; if(c&&t&&s){t.textContent=c[0]; s.textContent=c[1];}
   }));
 })();
+
+
+// =====================================================================
+// Lot filter (transactions / debts / history) and lot performance charts
+// =====================================================================
+state.lotFilter = '';          // '' = all records, 'none' = farm-wide only, else a lot id
+state.fromMaturity = false;    // when a lot is picked: only records dated on/after it matured
+state.perf = { scope:'all', metric:'expense', chart:'bar' };
+
+function addDaysStr(dateStr, n){
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + (n||0));
+  return d.toISOString().slice(0,10);
+}
+function lotMaturityDate(lot){ return addDaysStr(lot.start_date, lot.cycle_days || 28); }
+function daysBetween(a, b){ return Math.round((new Date(b+'T00:00:00Z') - new Date(a+'T00:00:00Z')) / 86400000); }
+function selectedLot(){
+  if (!state.lotFilter || state.lotFilter === 'none') return null;
+  return state.lots.find(l => String(l.id) === String(state.lotFilter)) || null;
+}
+function isLotFiltered(){ return !!state.lotFilter; }
+
+function filteredTx(){
+  if (!state.lotFilter) return state.tx;
+  if (state.lotFilter === 'none') return state.tx.filter(t => !t.lot_id);
+  const lot = selectedLot();
+  if (!lot) return state.tx;
+  const from = state.fromMaturity ? lotMaturityDate(lot) : null;
+  return state.tx.filter(t => t.lot_id === lot.id && (!from || t.tx_date >= from));
+}
+function filteredDebts(){
+  if (!state.lotFilter) return state.debts;
+  if (state.lotFilter === 'none') return state.debts.filter(d => !d.lot_id);
+  const lot = selectedLot();
+  if (!lot) return state.debts;
+  const from = state.fromMaturity ? lotMaturityDate(lot) : null;
+  return state.debts.filter(d => d.lot_id === lot.id && (!from || (d.incurred_date || '') >= from));
+}
+
+function lotFilterHtml(){
+  const lot = selectedLot();
+  const opts = '<option value="">All records</option><option value="none">Farm-wide only (no lot)</option>'
+    + state.lots.map(l => `<option value="${l.id}"${String(l.id)===String(state.lotFilter)?' selected':''}>${escapeHtml(l.name)}</option>`).join('');
+  let extra = '';
+  if (lot){
+    const mat = lotMaturityDate(lot);
+    const diff = daysBetween(todayStr(), mat);
+    const when = diff > 0 ? `in ${diff} day${diff===1?'':'s'}` : diff === 0 ? 'today' : `${-diff} day${diff===-1?'':'s'} ago`;
+    const tx = filteredTx(), debts = filteredDebts();
+    const inc = tx.filter(t=>t.type==='income' && t.category!=='Debt settlement').reduce((s,t)=>s+t.amount,0)
+      + debts.filter(d=>d.direction==='owed_to_me').reduce((s,d)=>s+d.amount,0);
+    const exp = tx.filter(t=>t.type==='expense' && t.category!=='Debt settlement').reduce((s,t)=>s+t.amount,0)
+      + debts.filter(d=>d.direction==='i_owe').reduce((s,d)=>s+d.amount,0);
+    const net = inc - exp;
+    extra = `
+      <label class="lf-check"><input type="checkbox" class="lf-mature"${state.fromMaturity?' checked':''}> Only from the maturity date (${mat})</label>
+      <div class="lot-summary"><b>${escapeHtml(lot.name)}</b> started ${lot.start_date} &middot; matures ${mat} (${when})<br>
+        Income <span class="pos">${fmtMoney(inc)}</span> &middot; Expenses <span class="neg">${fmtMoney(exp)}</span> &middot;
+        Net <span class="${net>=0?'pos':'neg'}">${fmtMoney(net)}</span></div>`;
+  }
+  return `<label style="margin-top:0">Show records for</label><select class="lf-select">${opts}</select>${extra}`;
+}
+
+function renderLotFilters(){
+  if (state.lotFilter && state.lotFilter !== 'none' && !selectedLot()){ state.lotFilter = ''; state.fromMaturity = false; }
+  document.querySelectorAll('[data-lot-filter]').forEach(box => {
+    box.style.display = state.lots.length ? '' : 'none';
+    box.innerHTML = lotFilterHtml();
+  });
+}
+document.addEventListener('change', e => {
+  if (e.target.classList && e.target.classList.contains('lf-select')){
+    state.lotFilter = e.target.value; state.fromMaturity = false;
+    renderTx(); renderDebts(); renderTxHistory(); renderDebtHistory(); renderLotFilters();
+  } else if (e.target.classList && e.target.classList.contains('lf-mature')){
+    state.fromMaturity = e.target.checked;
+    renderTx(); renderDebts(); renderTxHistory(); renderDebtHistory(); renderLotFilters();
+  }
+});
+
+// ---------------- performance ----------------
+const PERF_COLORS = ['#3d5c31','#b9832f','#a34a2f','#4f7a3d','#d4a24c','#7a5417','#5c5644','#8aa37a'];
+
+function lotBreakdown(lot, metric){
+  // metric: 'income' | 'expense'  ->  [{label, value}] grouped by category,
+  // with credit (debt) amounts grouped as "On credit". Debt-settlement cash
+  // entries are skipped, same double-counting rule as computeLotFinances.
+  const map = {};
+  state.tx.filter(t => t.lot_id === lot.id && t.type === metric && t.category !== 'Debt settlement')
+    .forEach(t => { map[t.category || 'Other'] = (map[t.category || 'Other'] || 0) + t.amount; });
+  const dir = metric === 'income' ? 'owed_to_me' : 'i_owe';
+  const credit = state.debts.filter(d => d.lot_id === lot.id && d.direction === dir).reduce((s,d)=>s+d.amount,0);
+  if (credit) map['On credit'] = (map['On credit'] || 0) + credit;
+  return Object.entries(map).map(([label,value]) => ({label, value})).sort((a,b)=>b.value-a.value);
+}
+
+function perfStatsFor(lots){
+  let inc=0, exp=0, sold=0, qty=0, lost=0;
+  lots.forEach(l => { const f = computeLotFinances(l); inc+=f.income; exp+=f.expense; sold+=f.piecesSold; qty+=(l.quantity||0); lost+=totalLost(l); });
+  const stats = [
+    { label:'Income', value: fmtMoney(inc), cls:'pos' },
+    { label:'Expenses', value: fmtMoney(exp), cls:'neg' },
+    { label:'Net', value: fmtMoney(inc-exp), cls: inc-exp>=0?'pos':'neg' }
+  ];
+  if (qty > 0) stats.push({ label:'Mortality', value: (lost/qty*100).toFixed(1)+'%', cls: lost? 'neg':'' });
+  if (sold > 0) stats.push({ label:'Avg price / bird', value: fmtMoney(inc/sold), cls:'' });
+  if (qty > 0) stats.push({ label:'Cost / bird started', value: fmtMoney(exp/qty), cls:'' });
+  return stats;
+}
+
+function barChartSvg(groups, seriesDefs){
+  // groups: [{label, values:[...]}], seriesDefs: [{name,color}]
+  const n = groups.length, sN = Math.max(...groups.map(g => g.values.length));
+  const groupW = Math.max(70, sN*26 + 22), padL = 8, padR = 8, top = 16, plotH = 170, labelH = 44;
+  const W = padL + padR + groupW*n, H = top + plotH + labelH;
+  const all = groups.flatMap(g => g.values);
+  const maxV = Math.max(0, ...all), minV = Math.min(0, ...all);
+  const range = (maxV - minV) || 1;
+  const y = v => top + (maxV - v) / range * plotH;
+  const zeroY = y(0);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="Bar graph" style="min-width:${Math.min(W,520)}px">`;
+  s += `<line x1="${padL}" x2="${W-padR}" y1="${zeroY}" y2="${zeroY}" stroke="#d8cba8" stroke-width="1"/>`;
+  groups.forEach((g, gi) => {
+    const gx = padL + gi*groupW + (groupW - g.values.length*26 + 6)/2;
+    g.values.forEach((v, si) => {
+      const x = gx + si*26, yy = y(v), h = Math.max(1, Math.abs(yy - zeroY));
+      s += `<rect x="${x}" y="${v>=0? yy : zeroY}" width="20" height="${h}" rx="3" fill="${(g.colors && g.colors[si]) || seriesDefs[si].color}"/>`;
+      s += `<text x="${x+10}" y="${v>=0? yy-4 : zeroY+h+11}" text-anchor="middle" font-size="9" fill="#5c5644">${compactNum(v)}</text>`;
+    });
+    const lbl = g.label.length > 11 ? g.label.slice(0,10)+'…' : g.label;
+    s += `<text x="${padL + gi*groupW + groupW/2}" y="${top+plotH+22}" text-anchor="middle" font-size="11" font-weight="600" fill="#2a2517">${escapeHtml(lbl)}</text>`;
+  });
+  return s + '</svg>';
+}
+function compactNum(v){
+  const a = Math.abs(v), sign = v<0?'-':'';
+  if (a >= 1e6) return sign + (a/1e6).toFixed(1) + 'M';
+  if (a >= 1e3) return sign + (a/1e3).toFixed(a>=1e4?0:1) + 'k';
+  return sign + Math.round(a);
+}
+
+function pieChartSvg(slices){
+  const total = slices.reduce((s,x)=>s+x.value,0);
+  const R = 90, cx = 110, cy = 110;
+  let s = `<svg viewBox="0 0 220 220" role="img" aria-label="Pie chart" style="max-width:260px">`;
+  if (slices.length === 1){
+    s += `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${slices[0].color}"/>`;
+  } else {
+    let a0 = -Math.PI/2;
+    slices.forEach(sl => {
+      const a1 = a0 + sl.value/total * Math.PI*2;
+      const x0 = cx + R*Math.cos(a0), y0 = cy + R*Math.sin(a0), x1 = cx + R*Math.cos(a1), y1 = cy + R*Math.sin(a1);
+      s += `<path d="M${cx} ${cy} L${x0.toFixed(2)} ${y0.toFixed(2)} A${R} ${R} 0 ${a1-a0>Math.PI?1:0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z" fill="${sl.color}" stroke="#fbf8ef" stroke-width="2"/>`;
+      a0 = a1;
+    });
+  }
+  return s + '</svg>';
+}
+
+function renderPerfScope(){
+  const sel = document.getElementById('perfScope'); if (!sel) return;
+  const cur = state.perf.scope;
+  sel.innerHTML = '<option value="all">All lots (compare)</option>'
+    + state.lots.map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
+  if (cur !== 'all' && !state.lots.some(l => String(l.id) === String(cur))) state.perf.scope = 'all';
+  sel.value = state.perf.scope;
+}
+
+function renderPerformance(){
+  const card = document.getElementById('perfCard'); if (!card) return;
+  card.style.display = state.lots.length ? '' : 'none';
+  if (!state.lots.length) return;
+  renderPerfScope();
+  const { scope, metric, chart } = state.perf;
+  const lots = scope === 'all' ? state.lots : state.lots.filter(l => String(l.id) === String(scope));
+  document.getElementById('perfStats').innerHTML = perfStatsFor(lots).map(s => `
+    <div class="stat ${s.cls}"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join('');
+
+  const chartEl = document.getElementById('perfChart'), legendEl = document.getElementById('perfLegend');
+  const metricLabel = metric === 'income' ? 'Income' : 'Expenses';
+  const noData = '<div class="empty">No income or expenses tagged to this yet. Pick the lot when you save a transaction or debt.</div>';
+
+  if (chart === 'bar'){
+    const series = [{name:'Income', color:'#3d5c31'}, {name:'Expenses', color:'#a34a2f'}, {name:'Net', color:'#b9832f'}];
+    const groups = scope === 'all'
+      ? lots.map(l => { const f = computeLotFinances(l); return { label:l.name, values:[f.income, f.expense, f.net] }; })
+      : (() => { const f = computeLotFinances(lots[0]); return [
+          { label:'Income', values:[f.income], colors:['#3d5c31'] },
+          { label:'Expenses', values:[f.expense], colors:['#a34a2f'] },
+          { label:'Net', values:[f.net], colors:[f.net>=0 ? '#b9832f' : '#7a2f18'] }]; })();
+    if (groups.every(g => g.values.every(v => !v))){ chartEl.innerHTML = noData; legendEl.innerHTML = ''; return; }
+    chartEl.innerHTML = barChartSvg(groups, series);
+    legendEl.innerHTML = scope === 'all' ? series.map(s => `<div class="lg"><span class="sw" style="background:${s.color}"></span>${s.name}</div>`).join('') : '';
+  } else {
+    let slices = scope === 'all'
+      ? lots.map(l => ({ label:l.name, value: Math.max(0, metric==='income' ? computeLotFinances(l).income : computeLotFinances(l).expense) }))
+      : lotBreakdown(lots[0], metric);
+    slices = slices.filter(s => s.value > 0).map((s,i) => ({ ...s, color: PERF_COLORS[i % PERF_COLORS.length] }));
+    if (!slices.length){ chartEl.innerHTML = noData; legendEl.innerHTML = ''; return; }
+    const total = slices.reduce((s,x)=>s+x.value,0);
+    chartEl.innerHTML = pieChartSvg(slices);
+    legendEl.innerHTML = `<div class="lg" style="font-weight:700;">${metricLabel}${scope==='all'?' share by lot':' by category'} &middot; total ${fmtMoney(total)}</div>`
+      + slices.map(s => `<div class="lg"><span class="sw" style="background:${s.color}"></span>${escapeHtml(s.label)}
+        <span class="lg-v">${fmtMoney(s.value)} &middot; ${(s.value/total*100).toFixed(0)}%</span></div>`).join('');
+  }
+}
+
+document.getElementById('perfScope').addEventListener('change', e => { state.perf.scope = e.target.value; renderPerformance(); });
+document.getElementById('perfMetric').addEventListener('change', e => { state.perf.metric = e.target.value; renderPerformance(); });
+document.querySelectorAll('#perfChartSeg button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#perfChartSeg button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); state.perf.chart = b.dataset.val;
+  document.getElementById('perfMetric').parentElement.style.display = state.perf.chart === 'pie' ? '' : 'none';
+  renderPerformance();
+}));
+document.getElementById('perfMetric').parentElement.style.display = 'none';
