@@ -388,11 +388,21 @@
 
     <!-- REMINDERS -->
     <section class="view" id="reminders">
-      <div class="card">
-        <h2>Notifications on this device</h2>
-        <p class="note">Get an in-app alert here, in addition to SMS, whenever a reminder is sent. Works after adding this app to your home screen.</p>
+      <div class="card notif-card">
+        <div class="notif-row">
+          <div class="notif-text">
+            <div class="notif-title">Push notifications</div>
+            <div class="notif-sub" id="pushSub">Checking&hellip;</div>
+          </div>
+          <label class="switch" aria-label="Push notifications">
+            <input type="checkbox" id="pushSwitch" disabled>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="notif-help" id="pushHelp" style="display:none"></div>
         <div class="err" id="pushErr"></div>
-        <button class="btn secondary" id="pushToggleBtn">Enable notifications on this device</button>
+        <button type="button" class="link-btn" id="pushTestBtn" style="display:none">Send a test notification</button>
+        <p class="note" style="margin-top:10px">Reminders also arrive by SMS. Notifications on this device are an extra alert, and work best once the app is added to your home screen.</p>
       </div>
       <div class="card">
         <h2>Add a reminder</h2>
@@ -764,6 +774,17 @@
 
 <div class="toast" id="toast"></div>
 
+<div id="notifPrompt" class="notif-sheet" style="display:none" role="dialog" aria-labelledby="npTitle">
+  <div class="notif-sheet-card">
+    <svg class="np-bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a2.4 2.4 0 0 0 2.4-2.4h-4.8A2.4 2.4 0 0 0 12 22zm7-6.2V11c0-3.3-2.2-6-5.2-6.8V3.3a1.8 1.8 0 0 0-3.6 0v.9C7.2 5 5 7.7 5 11v4.8l-2 2v1h18v-1l-2-2z" fill="currentColor"/></svg>
+    <h3 id="npTitle">Stay on top of your farm</h3>
+    <p id="npText">Turn on notifications to get vaccination, feeding and payment reminders on this device, even when the app is closed.</p>
+    <div class="np-steps" id="npSteps" style="display:none"></div>
+    <button type="button" class="btn" id="npAllowBtn">Turn on notifications</button>
+    <button type="button" class="link-btn np-later" id="npLaterBtn">Not now</button>
+  </div>
+</div>
 <script src="/app.js"></script>
+
 </body>
 </html>

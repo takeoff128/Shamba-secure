@@ -359,6 +359,7 @@ async function enterApp(){
   renderIconPicker();
   await loadAll();
   refreshPushButton();
+  setTimeout(maybeShowNotifPrompt, 2500);
 }
 
 document.getElementById('verifyCodeBtn').addEventListener('click', async ()=>{
@@ -1215,54 +1216,144 @@ function urlBase64ToUint8Array(base64String){
   return outputArray;
 }
 
-async function refreshPushButton(){
-  const btn = document.getElementById('pushToggleBtn');
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)){
-    btn.textContent = 'Not supported on this browser';
-    btn.disabled = true;
-    return;
+// ---- Push notifications: status, toggle, first-run prompt ----
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+let pushServerConfigured = null;
+
+async function getPushSub(){
+  const reg = await navigator.serviceWorker.ready;
+  return { reg, sub: await reg.pushManager.getSubscription() };
+}
+// 'unsupported' | 'ios-install' | 'blocked' | 'unconfigured' | 'on' | 'off'
+async function pushStatus(){
+  if (isIOS && !isStandalone) return 'ios-install';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'unsupported';
+  if (Notification.permission === 'denied') return 'blocked';
+  if (pushServerConfigured === null){
+    try{ pushServerConfigured = !!(await api('/push/vapid-public-key')).configured; }catch(e){ pushServerConfigured = true; }
   }
+  if (!pushServerConfigured) return 'unconfigured';
   try{
-    const reg = await navigator.serviceWorker.ready;
-    const existing = await reg.pushManager.getSubscription();
-    btn.textContent = existing ? 'Notifications enabled \u2014 tap to disable' : 'Enable notifications on this device';
-  }catch(e){ /* leave default label */ }
+    const { sub } = await getPushSub();
+    return (sub && Notification.permission === 'granted') ? 'on' : 'off';
+  }catch(e){ return 'off'; }
 }
 
-document.getElementById('pushToggleBtn').addEventListener('click', async ()=>{
+function blockedSteps(){
+  if (isIOS) return 'Open the iPhone <b>Settings</b> app &rarr; <b>Notifications</b> &rarr; <b>Shamba Secure</b> and switch on <b>Allow Notifications</b>.';
+  if (/android/i.test(navigator.userAgent)) return 'Tap the <b>lock</b> or <b>settings</b> icon beside the address bar &rarr; <b>Permissions</b> &rarr; <b>Notifications</b> &rarr; <b>Allow</b>. Then come back here.';
+  return 'Click the <b>lock</b> icon beside the address bar &rarr; <b>Site settings</b> &rarr; set <b>Notifications</b> to <b>Allow</b>, then reload this page.';
+}
+
+async function refreshPushButton(){
+  const sw = document.getElementById('pushSwitch'), sub = document.getElementById('pushSub'),
+        help = document.getElementById('pushHelp'), test = document.getElementById('pushTestBtn');
+  if (!sw) return;
+  const st = await pushStatus();
+  sub.className = 'notif-sub'; help.style.display = 'none'; test.style.display = 'none';
+  sw.disabled = false; sw.checked = false;
+  if (st === 'on'){ sw.checked = true; sub.textContent = 'On for this device'; sub.classList.add('ok'); test.style.display = ''; }
+  else if (st === 'off'){ sub.textContent = 'Off. Turn on to get reminder alerts on this device.'; }
+  else if (st === 'blocked'){
+    sw.disabled = true; sub.textContent = 'Blocked in your device settings'; sub.classList.add('warn');
+    help.innerHTML = blockedSteps(); help.style.display = '';
+  } else if (st === 'ios-install'){
+    sw.disabled = true; sub.textContent = 'Add the app to your Home Screen first';
+    help.innerHTML = 'On iPhone, notifications only work from the installed app. Tap <b>Share</b> &rarr; <b>Add to Home Screen</b>, then open Shamba Secure from there.'; help.style.display = '';
+  } else if (st === 'unconfigured'){ sw.disabled = true; sub.textContent = 'Not set up on this server yet'; }
+  else { sw.disabled = true; sub.textContent = 'Not supported on this browser'; }
+}
+
+// Asks for permission (must run from a tap) and subscribes. Returns
+// 'on' | 'blocked' | 'dismissed' | 'unconfigured' on completion.
+async function enablePush(){
+  const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+  if (perm === 'denied') return 'blocked';
+  if (perm !== 'granted') return 'dismissed';
+  const vapid = await api('/push/vapid-public-key');
+  if (!vapid.configured) return 'unconfigured';
+  const { reg, sub: existing } = await getPushSub();
+  const sub = existing || await reg.pushManager.subscribe({
+    userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapid.publicKey)
+  });
+  const j = sub.toJSON();
+  await api('/push/subscribe', { method:'POST', body:{ endpoint: j.endpoint, keys: j.keys } });
+  return 'on';
+}
+
+document.getElementById('pushSwitch').addEventListener('change', async (e)=>{
   const err = document.getElementById('pushErr'); err.textContent = '';
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)){
-    err.textContent = 'Push notifications aren\u2019t supported on this browser.';
-    return;
-  }
+  const sw = e.target; sw.disabled = true;
+  try{
+    if (sw.checked){
+      const r = await enablePush();
+      if (r === 'on') showToast('Notifications turned on');
+      else if (r === 'blocked') err.textContent = 'Notifications are blocked for this site.';
+      else if (r === 'unconfigured') err.textContent = 'Push notifications aren\u2019t set up on this server yet.';
+    } else {
+      const { sub } = await getPushSub();
+      if (sub){
+        await api('/push/unsubscribe', { method:'POST', body:{ endpoint: sub.endpoint } });
+        await sub.unsubscribe();
+      }
+      showToast('Notifications turned off');
+    }
+  }catch(ex){ err.textContent = ex.message || 'Could not change notification settings.'; }
+  await refreshPushButton();
+});
+
+document.getElementById('pushTestBtn').addEventListener('click', async ()=>{
   try{
     const reg = await navigator.serviceWorker.ready;
-    const existing = await reg.pushManager.getSubscription();
-
-    if (existing){
-      await api('/push/unsubscribe', { method:'POST', body:{ endpoint: existing.endpoint } });
-      await existing.unsubscribe();
-      showToast('Notifications disabled on this device');
-      await refreshPushButton();
-      return;
-    }
-
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted'){ err.textContent = 'Notification permission was not granted.'; return; }
-
-    const vapid = await api('/push/vapid-public-key');
-    if (!vapid.configured){ err.textContent = 'Push notifications aren\u2019t set up on this server yet.'; return; }
-
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapid.publicKey)
-    });
-    const subJson = sub.toJSON();
-    await api('/push/subscribe', { method:'POST', body:{ endpoint: subJson.endpoint, keys: subJson.keys } });
-    showToast('Notifications enabled on this device');
-    await refreshPushButton();
-  }catch(e){ err.textContent = e.message || 'Could not enable notifications.'; }
+    await reg.showNotification('Shamba Secure', { body:'Notifications are working on this device.', icon:'/icons/icon-192.png', badge:'/icons/icon-192.png' });
+  }catch(ex){ document.getElementById('pushErr').textContent = ex.message || 'Could not show a test notification.'; }
 });
+
+// First-run prompt: a friendly sheet shown after login when notifications
+// aren't on yet. The browser permission dialog only appears after the user
+// taps "Turn on" (browsers ignore or penalise prompts not tied to a tap).
+const NOTIF_SNOOZE_KEY = 'ss_notif_snooze_until';
+function notifSnoozed(){ try{ return Number(localStorage.getItem(NOTIF_SNOOZE_KEY) || 0) > Date.now(); }catch(e){ return false; } }
+function snoozeNotifPrompt(days){ try{ localStorage.setItem(NOTIF_SNOOZE_KEY, String(Date.now() + days*86400000)); }catch(e){} }
+function hideNotifPrompt(){ document.getElementById('notifPrompt').style.display = 'none'; }
+
+async function maybeShowNotifPrompt(){
+  if (notifSnoozed()) return;
+  const st = await pushStatus();
+  if (st === 'on' || st === 'unsupported' || st === 'unconfigured') return;
+  const box = document.getElementById('notifPrompt'), title = document.getElementById('npTitle'),
+        text = document.getElementById('npText'), steps = document.getElementById('npSteps'),
+        allow = document.getElementById('npAllowBtn'), later = document.getElementById('npLaterBtn');
+  steps.style.display = 'none'; allow.style.display = '';
+  allow.dataset.mode = 'enable'; allow.textContent = 'Turn on notifications'; later.textContent = 'Not now';
+  if (st === 'blocked'){
+    title.textContent = 'Notifications are turned off';
+    text.textContent = 'You may miss vaccination, feeding and payment reminders. You can switch them back on in your device settings:';
+    steps.innerHTML = blockedSteps(); steps.style.display = '';
+    allow.style.display = 'none'; later.textContent = 'Got it';
+  } else if (st === 'ios-install'){
+    title.textContent = 'Add Shamba Secure to your Home Screen';
+    text.textContent = 'To get reminder notifications on iPhone, install the app first:';
+    steps.innerHTML = 'Tap <b>Share</b> &rarr; <b>Add to Home Screen</b>, then open the app from your Home Screen.';
+    steps.style.display = ''; allow.style.display = 'none'; later.textContent = 'Got it';
+  } else {
+    title.textContent = 'Stay on top of your farm';
+    text.textContent = 'Turn on notifications to get vaccination, feeding and payment reminders on this device, even when the app is closed.';
+  }
+  box.style.display = 'flex';
+}
+document.getElementById('npAllowBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('npAllowBtn'); btn.disabled = true;
+  try{
+    const r = await enablePush();
+    hideNotifPrompt();
+    if (r === 'on') showToast('Notifications turned on');
+    else { snoozeNotifPrompt(r === 'blocked' ? 30 : 3); }
+  }catch(e){ hideNotifPrompt(); snoozeNotifPrompt(1); }
+  btn.disabled = false; refreshPushButton();
+});
+document.getElementById('npLaterBtn').addEventListener('click', ()=>{ snoozeNotifPrompt(7); hideNotifPrompt(); });
 
 document.getElementById('addReminderBtn').addEventListener('click', async ()=>{
   const err = document.getElementById('remErr'); err.textContent = '';
