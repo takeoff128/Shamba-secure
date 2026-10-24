@@ -291,3 +291,12 @@ Ideas that fit naturally into the existing schema:
 - Photos attached to animal records
 - Basic charts on the dashboard (income vs. expense over time)
 - Recurring reminders (e.g. "every 30 days") instead of one-off dates
+
+## Assistant ("Ask" button)
+
+A chat assistant sits bottom-right on every screen and in the menu. It answers how-to questions about the app and looks up your farm's numbers (overview, transactions, debts, poultry lots and performance, animals, reminders).
+
+- **AI mode**: set `ANTHROPIC_API_KEY` (optional `ASSISTANT_MODEL`) in the hosting service's environment. It uses Claude with read-only tools.
+- **Offline mode**: with no key it searches `assistant/knowledge.md` and answers from the manual plus basic figures.
+- **Safety**: every tool is read-only and scoped to the signed-in user's farm in SQL; record text is treated as untrusted data; requests are rate limited per user (30 per 10 minutes).
+- **Keeping it smart**: when you add or change a feature, update `assistant/knowledge.md` so the assistant knows about it.

@@ -51,11 +51,15 @@ function isOwner(){ return state.role === 'owner'; }
 // this fills both from the same state rather than duplicating the markup
 // logic at each call site.
 function renderFarmMark(){
+  const isDefault = !state.farmLogo && !state.farmIcon;
   const html = state.farmLogo
     ? `<img src="${state.farmLogo}" alt="">`
-    : escapeHtml(state.farmIcon || '\u{1F512}');
-  document.getElementById('farmMark').innerHTML = html;
-  document.getElementById('drawerFarmMark').innerHTML = html;
+    : (state.farmIcon ? escapeHtml(state.farmIcon) : '<img src="/icons/logo-mark.svg" alt="">');
+  ['farmMark','drawerFarmMark'].forEach(id => {
+    const el = document.getElementById(id);
+    el.innerHTML = html;
+    el.classList.toggle('default-logo', isDefault);
+  });
 }
 function removeBtn(onclick){ return isOwner() ? `<button class="del" onclick="${onclick}">Remove</button>` : ''; }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
@@ -2059,3 +2063,137 @@ document.querySelectorAll('#perfChartSeg button').forEach(b => b.addEventListene
   renderPerformance();
 }));
 document.getElementById('perfMetric').parentElement.style.display = 'none';
+
+
+// =====================================================================
+// Shamba Assistant (chat panel)
+// =====================================================================
+const ASST_KEY = 'ss_asst_chat';
+const ASST_SUGGESTIONS = [
+  'How do I record a sale?',
+  'Who owes me money?',
+  'How is my latest lot doing?',
+  'What reminders are coming up?',
+  'Where did my settled debt go?',
+  'Why are notifications blocked?'
+];
+const asst = { messages: [], busy: false, mode: null };
+const VIEW_LABELS = { dash:'Overview', money:'Finance', livestock:'Livestock', broilers:'Poultry', reminders:'Reminders', team:'Team', history:'History' };
+
+function asstSave(){ try{ sessionStorage.setItem(ASST_KEY, JSON.stringify(asst.messages.slice(-30))); }catch(e){} }
+function asstLoad(){
+  try{ const raw = sessionStorage.getItem(ASST_KEY); if (raw) asst.messages = JSON.parse(raw).filter(m => m && typeof m.content === 'string'); }catch(e){}
+}
+
+// Small, safe markdown subset: paragraphs, - / 1. lists, **bold**, `code`.
+function asstFormat(text){
+  const inline = s => escapeHtml(s)
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+  const out = []; let list = null; let para = [];
+  const flushPara = () => { if (para.length){ out.push('<p>' + para.map(inline).join('<br>') + '</p>'); para = []; } };
+  const flushList = () => { if (list){ out.push(`<${list.t}>` + list.items.map(i => '<li>' + inline(i) + '</li>').join('') + `</${list.t}>`); list = null; } };
+  String(text).split('\n').forEach(line => {
+    const ul = line.match(/^\s*[-*\u2022]\s+(.*)/), ol = line.match(/^\s*\d+[.)]\s+(.*)/);
+    if (ul || ol){
+      flushPara();
+      const t = ul ? 'ul' : 'ol';
+      if (!list || list.t !== t){ flushList(); list = { t, items: [] }; }
+      list.items.push((ul || ol)[1]);
+    } else if (!line.trim()){ flushPara(); flushList(); }
+    else { flushList(); para.push(line.trim()); }
+  });
+  flushPara(); flushList();
+  return out.join('');
+}
+
+function asstRender(){
+  const body = document.getElementById('asstBody');
+  if (asst.messages.length === 0){
+    body.innerHTML = '<div class="asst-hello">Hi' + (state.name ? ' ' + escapeHtml(state.name.split(' ')[0]) : '') + '! I can show you how to do things in the app and look up your farm\'s numbers. What would you like to know?</div>';
+  } else {
+    body.innerHTML = asst.messages.map(m => m.role === 'user'
+      ? `<div class="asst-msg user">${escapeHtml(m.content)}</div>`
+      : `<div class="asst-msg ${m.error ? 'err' : 'bot'}">${m.error ? escapeHtml(m.content) : asstFormat(m.content)}</div>`).join('');
+  }
+  if (asst.busy) body.insertAdjacentHTML('beforeend', '<div class="asst-msg bot"><span class="asst-typing"><i></i><i></i><i></i></span></div>');
+  body.scrollTop = body.scrollHeight;
+  const sug = document.getElementById('asstSuggest');
+  sug.innerHTML = asst.messages.length === 0
+    ? ASST_SUGGESTIONS.map(s => `<button type="button" data-q="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')
+    : '';
+  document.getElementById('asstSend').disabled = asst.busy;
+}
+
+function asstContext(){
+  const view = document.querySelector('.view.active');
+  const lot = selectedLot ? selectedLot() : null;
+  return {
+    screen: view ? (VIEW_LABELS[view.id] || view.id) : '',
+    lot: lot ? lot.name : (state.lotFilter === 'none' ? 'Farm-wide only' : '')
+  };
+}
+
+async function asstSend(text){
+  text = (text || '').trim();
+  if (!text || asst.busy) return;
+  asst.messages.push({ role:'user', content: text });
+  asst.busy = true; asstSave(); asstRender();
+  try{
+    const payload = asst.messages.filter(m => !m.error).slice(-12).map(m => ({ role:m.role, content:m.content }));
+    const res = await api('/assistant', { method:'POST', body:{ messages: payload, context: asstContext() } });
+    asst.messages.push({ role:'assistant', content: res.reply });
+    if (res.mode) asstSetMode(res.mode);
+  }catch(e){
+    asst.messages.push({ role:'assistant', error:true, content: (e && e.message) || 'Something went wrong. Please try again.' });
+  }
+  asst.busy = false; asstSave(); asstRender();
+}
+
+function asstSetMode(mode){
+  asst.mode = mode;
+  document.getElementById('asstMode').textContent = mode === 'ai' ? 'AI assistant \u00b7 read-only' : 'Offline guide \u00b7 app manual';
+}
+
+function openAsst(){
+  document.getElementById('asstPanel').classList.add('open');
+  document.getElementById('asstPanel').setAttribute('aria-hidden','false');
+  document.getElementById('asstFab').style.display = 'none';
+  asstRender();
+  if (asst.mode === null){
+    api('/assistant/status').then(s => asstSetMode(s.ai ? 'ai' : 'offline')).catch(()=>{});
+  }
+  setTimeout(()=>document.getElementById('asstInput').focus(), 150);
+}
+function closeAsst(){
+  document.getElementById('asstPanel').classList.remove('open');
+  document.getElementById('asstPanel').setAttribute('aria-hidden','true');
+  document.getElementById('asstFab').style.display = '';
+}
+
+document.getElementById('asstFab').addEventListener('click', openAsst);
+document.getElementById('asstCloseBtn').addEventListener('click', closeAsst);
+document.getElementById('drawerAskBtn').addEventListener('click', ()=>{ closeDrawer(); openAsst(); });
+document.getElementById('asstNewBtn').addEventListener('click', ()=>{ asst.messages = []; asst.busy = false; asstSave(); asstRender(); document.getElementById('asstInput').focus(); });
+document.getElementById('asstSuggest').addEventListener('click', e => {
+  const b = e.target.closest('button[data-q]'); if (b) asstSend(b.dataset.q);
+});
+document.getElementById('asstForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const inp = document.getElementById('asstInput');
+  const v = inp.value; inp.value = ''; inp.style.height = 'auto';
+  asstSend(v);
+});
+document.getElementById('asstInput').addEventListener('input', e => {
+  e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 110) + 'px';
+});
+document.getElementById('asstInput').addEventListener('keydown', e => {
+  // Enter sends on desktop; on touch keyboards Enter inserts a new line.
+  if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)){ e.preventDefault(); document.getElementById('asstForm').requestSubmit(); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('asstPanel').classList.contains('open')) closeAsst(); });
+document.getElementById('logoutBtn').addEventListener('click', ()=>{
+  asst.messages = []; asst.mode = null; try{ sessionStorage.removeItem(ASST_KEY); }catch(e){}
+  closeAsst();
+});
+asstLoad();

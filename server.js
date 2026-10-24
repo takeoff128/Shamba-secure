@@ -13,6 +13,7 @@ const { sendPasswordResetCodeEmail, sendVerificationCodeEmail } = require('./ema
 const { isConfigured: pushConfigured, VAPID_PUBLIC_KEY } = require('./webpush');
 const { rateLimit, securityHeaders } = require('./security');
 const cron = require('node-cron');
+const { registerAssistant } = require('./assistant');
 
 const app = express();
 // Railway/Render/Fly.io (see README "Deploying") sit the app behind a
@@ -1050,6 +1051,9 @@ app.post('/api/admin/delete-account', (req, res) => {
   db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
   res.json({ ok: true, deleted: true, user: { id: user.id, phone: user.phone, email: user.email } });
 });
+
+// In-app assistant (read-only; AI via ANTHROPIC_API_KEY, offline guide otherwise)
+registerAssistant(app, { db, requireAuth, rateLimit });
 
 // Fallback to the app shell for any other route (simple SPA)
 app.get('/{*splat}', (req, res) => {

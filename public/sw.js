@@ -1,11 +1,12 @@
-const CACHE_NAME = 'shamba-secure-shell-v1';
+const CACHE_NAME = 'shamba-secure-shell-v3';
 const SHELL_FILES = [
   '/',
   '/styles.css',
   '/app.js',
   '/manifest.json',
   '/icons/icon-192.png',
-  '/icons/icon-512.png'
+  '/icons/icon-512.png',
+  '/icons/logo-mark.svg'
 ];
 
 self.addEventListener('install', (event) => {

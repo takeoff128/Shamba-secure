@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>Shamba Secure</title>
 <link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="theme-color" content="#1c2a1a">
@@ -22,12 +23,7 @@
   </div>
   <div class="auth-inner">
     <div class="auth-hero">
-      <svg class="auth-logo" viewBox="0 0 64 64" aria-hidden="true">
-        <circle cx="32" cy="32" r="30" fill="#1c2a1a" stroke="#d4a24c" stroke-width="3"/>
-        <path d="M32 46V28" stroke="#d4a24c" stroke-width="3" stroke-linecap="round"/>
-        <path d="M32 31C32 22 26 17 17 17c0 9 5 15 15 14z" fill="#d4a24c"/>
-        <path d="M32 27c0-8 5-12 14-12 0 8-5 13-14 12z" fill="#e6bb6a"/>
-      </svg>
+      <img class="auth-logo" src="/icons/logo-mark.svg" alt="Shamba Secure">
       <h1>Shamba Secure</h1>
       <div class="tagline">Your farm's money and livestock records, private to your farm.</div>
     </div>
@@ -136,7 +132,7 @@
       <span></span><span></span><span></span>
     </button>
     <div class="brand" id="openProfileBtn" role="button" tabindex="0" aria-label="Open profile and farm settings">
-      <div class="mark small" id="farmMark">&#128274;</div>
+      <div class="mark small default-logo" id="farmMark"><img src="/icons/logo-mark.svg" alt=""></div>
       <div>
         <h1 id="farmNameLabel">Shamba Secure</h1>
         <div class="tagline" id="userLabel"></div>
@@ -149,7 +145,7 @@
   <nav class="drawer" id="sideDrawer" aria-label="Main menu">
     <div class="drawer-head">
       <div class="brand">
-        <div class="mark small" id="drawerFarmMark">&#128274;</div>
+        <div class="mark small default-logo" id="drawerFarmMark"><img src="/icons/logo-mark.svg" alt=""></div>
         <div>
           <h1 id="drawerFarmNameLabel">Shamba Secure</h1>
           <div class="tagline" id="drawerUserLabel"></div>
@@ -164,10 +160,32 @@
     <button class="tab-btn drawer-item" data-tab="reminders">&#9200; Reminders</button>
     <button class="tab-btn drawer-item" data-tab="team">&#128101; Team</button>
     <button class="tab-btn drawer-item" data-tab="history">&#128339; History</button>
+    <button type="button" class="drawer-item" id="drawerAskBtn">&#10024; Ask the assistant</button>
     <div class="drawer-sep"></div>
     <button type="button" class="drawer-item" id="drawerProfileBtn">&#128100; Profile &amp; farm settings</button>
     <button type="button" class="drawer-item drawer-danger" id="drawerLogoutBtn">&#128682; Log out</button>
   </nav>
+
+  <button type="button" class="asst-fab" id="asstFab" aria-label="Ask the Shamba Assistant">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H10l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" fill="currentColor"/></svg>
+    <span>Ask</span>
+  </button>
+  <div class="asst-panel" id="asstPanel" role="dialog" aria-label="Shamba Assistant" aria-hidden="true">
+    <div class="asst-head">
+      <img src="/icons/logo-mark.svg" alt="" class="asst-logo">
+      <div class="asst-title"><b>Shamba Assistant</b><span id="asstMode">Ask about the app or your farm</span></div>
+      <button type="button" class="asst-icon-btn" id="asstNewBtn" title="Start a new chat">New</button>
+      <button type="button" class="asst-icon-btn" id="asstCloseBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="asst-body" id="asstBody" aria-live="polite"></div>
+    <div class="asst-suggest" id="asstSuggest"></div>
+    <form class="asst-form" id="asstForm" autocomplete="off">
+      <textarea id="asstInput" rows="1" maxlength="2000" placeholder="Ask about the app or your farm" aria-label="Your question"></textarea>
+      <button type="submit" class="asst-send" id="asstSend" aria-label="Send">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20.5 21.5 12 3 3.5l.01 6.6L15 12 3 13.9z" fill="currentColor"/></svg>
+      </button>
+    </form>
+  </div>
 
   <div class="app">
 
