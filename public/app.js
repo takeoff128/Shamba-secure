@@ -775,8 +775,10 @@ document.getElementById('clearTxBtn').addEventListener('click', async ()=>{
 document.getElementById('clearDebtsBtn').addEventListener('click', async ()=>{
   const count = state.debts.length;
   if (count === 0){ showToast('No debts to clear'); return; }
+  const settledCount = state.debts.filter(d => d.settled).length;
   const confirmed = confirm(
-    `Delete all ${count} debt${count === 1 ? '' : 's'} for this farm? ` +
+    `Delete all ${count} debt${count === 1 ? '' : 's'} for this farm` +
+    (settledCount ? `, including ${settledCount} settled debt${settledCount === 1 ? '' : 's'} kept in History` : '') + `? ` +
     `This can't be undone. Any transactions already created by settling these debts will NOT be removed \u2014 only the debt entries themselves.`
   );
   if (!confirmed) return;
@@ -891,7 +893,12 @@ document.getElementById('addDebtBtn').addEventListener('click', async ()=>{
     await loadAll();
   }catch(e){ err.textContent = e.message; }
 });
-async function toggleSettle(id){ await api('/debts/'+id+'/settle', { method:'PATCH' }); await loadAll(); }
+async function toggleSettle(id){
+  const d = state.debts.find(x => x.id === id);
+  await api('/debts/'+id+'/settle', { method:'PATCH' });
+  await loadAll();
+  if (d) showToast(d.settled ? 'Restored to the debt ledger' : 'Settled \u2014 moved to History');
+}
 async function deleteDebt(id){
   if (!confirm('Delete this debt record? This can\'t be undone.')) return;
   await api('/debts/'+id, { method:'DELETE' });
@@ -1498,7 +1505,7 @@ function debtRowHtml(d){
       </div>
     </div>
     <div style="display:flex;gap:14px;justify-content:flex-end;margin:-6px 0 8px;">
-      <button class="del" style="color:var(--leaf-700)" onclick="toggleSettle(${d.id})">${d.settled?'Mark unsettled':'Mark settled'}</button>
+      <button class="del" style="color:var(--leaf-700)" onclick="toggleSettle(${d.id})">${d.settled?'Restore to ledger':'Mark settled'}</button>
       <button class="del" style="color:var(--leaf-700)" onclick="openDebtEditModal(${d.id})">Edit</button>
       ${removeBtn(`deleteDebt(${d.id})`)}
     </div>
@@ -1507,14 +1514,18 @@ function debtRowHtml(d){
 
 const HISTORY_PREVIEW_LIMIT = 10;
 
-function goToHistory(section){
-  document.getElementById('historyModal').style.display = 'flex';
-  const card = document.getElementById(section === 'debts' ? 'debtHistoryCard' : 'txHistoryCard');
-  if (card) card.scrollIntoView({ behavior:'smooth', block:'start' });
+function setHistorySection(which){
+  document.querySelectorAll('#historySeg button').forEach(x => x.classList.toggle('on', x.dataset.val === which));
+  document.getElementById('debtHistoryCard').style.display = which === 'debts' ? '' : 'none';
+  document.getElementById('txHistoryCard').style.display = which === 'tx' ? '' : 'none';
 }
-document.getElementById('closeHistoryBtn').addEventListener('click', ()=>{
-  document.getElementById('historyModal').style.display = 'none';
-});
+document.querySelectorAll('#historySeg button').forEach(b => b.addEventListener('click', () => setHistorySection(b.dataset.val)));
+function goToHistory(section){
+  const btn = document.querySelector('.tab-btn[data-tab="history"]');
+  if (btn) btn.click();
+  setHistorySection(section === 'debts' ? 'debts' : 'tx');
+  window.scrollTo({ top: 0 });
+}
 
 function renderTx(){
   const el = document.getElementById('txList');
@@ -1532,16 +1543,12 @@ function renderTx(){
 
 function renderDebts(){
   const el = document.getElementById('debtList');
-  const all = filteredDebts();
-  if (all.length===0){ el.innerHTML = '<div class="empty">' + (isLotFiltered() ? 'No debts match this lot.' : 'No debts recorded.') + '</div>'; return; }
-  const shown = all.slice(0, HISTORY_PREVIEW_LIMIT);
-  let html = shown.map(debtRowHtml).join('');
-  if (all.length > HISTORY_PREVIEW_LIMIT){
-    html += `<div style="text-align:center;padding-top:10px;">
-      <button class="link-btn" onclick="goToHistory('debts')">View all ${all.length} debts &rarr;</button>
-    </div>`;
+  const open = filteredDebts().filter(d => !d.settled);
+  if (open.length===0){
+    el.innerHTML = '<div class="empty">' + (isLotFiltered() ? 'No open debts for this selection.' : 'No open debts. Settled debts are kept in History.') + '</div>';
+    return;
   }
-  el.innerHTML = html;
+  el.innerHTML = open.map(debtRowHtml).join('');
 }
 
 function renderTxHistory(){
@@ -1556,10 +1563,12 @@ function renderTxHistory(){
 function renderDebtHistory(){
   const el = document.getElementById('debtHistoryList');
   if (!el) return;
-  const all = filteredDebts();
-  el.innerHTML = all.length === 0
-    ? '<div class="empty">' + (isLotFiltered() ? 'No debts match this lot.' : 'No debts recorded.') + '</div>'
-    : all.map(debtRowHtml).join('');
+  const done = filteredDebts().filter(d => d.settled);
+  const seg = document.getElementById('histSegDebts');
+  if (seg) seg.textContent = 'Settled debts (' + state.debts.filter(d => d.settled).length + ')';
+  el.innerHTML = done.length === 0
+    ? '<div class="empty">' + (isLotFiltered() ? 'No settled debts for this selection.' : 'Nothing here yet. When you mark a debt as settled it moves here.') + '</div>'
+    : done.map(debtRowHtml).join('');
 }
 
 function renderAnimals(){

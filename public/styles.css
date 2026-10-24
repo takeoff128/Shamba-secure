@@ -141,7 +141,7 @@ header.top .tagline{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 }
 .drawer.open{transform:translateX(0);}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:14px;}
-.drawer-head .brand{min-width:0;}
+.drawer-head .brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1;}
 .drawer-head h1{font-size:16px;}
 .drawer-close{background:none;border:none;font-size:22px;line-height:1;color:var(--ink-soft);cursor:pointer;padding:4px;flex:0 0 auto;}
 .drawer-item{display:block;width:100%;text-align:left;padding:12px 10px;border:none;background:transparent;border-radius:8px;

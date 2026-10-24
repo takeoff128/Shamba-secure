@@ -163,6 +163,7 @@
     <button class="tab-btn drawer-item" data-tab="broilers">&#128020; Poultry</button>
     <button class="tab-btn drawer-item" data-tab="reminders">&#9200; Reminders</button>
     <button class="tab-btn drawer-item" data-tab="team">&#128101; Team</button>
+    <button class="tab-btn drawer-item" data-tab="history">&#128339; History</button>
     <div class="drawer-sep"></div>
     <button type="button" class="drawer-item" id="drawerProfileBtn">&#128100; Profile &amp; farm settings</button>
     <button type="button" class="drawer-item drawer-danger" id="drawerLogoutBtn">&#128682; Log out</button>
@@ -445,27 +446,25 @@
         <div class="list" id="userList"></div>
       </div>
     </section>
-  </div>
-</div>
 
-<!-- History modal (opened from "View all" links, not part of main navigation) -->
-<div id="historyModal" class="modal-backdrop" style="display:none">
-  <div class="modal" style="max-width:600px;">
-    <div class="modal-head">
-      <h2>History</h2>
-      <button class="del" id="closeHistoryBtn">Close</button>
-    </div>
-    <div class="lot-filter" data-lot-filter></div>
-    <div id="txHistoryCard" style="margin-top:14px;">
-      <h3>Transaction history</h3>
-      <p class="note">Every transaction ever recorded for this farm, most recent first.</p>
-      <div class="list" id="txHistoryList"></div>
-    </div>
-    <div id="debtHistoryCard" style="margin-top:22px;">
-      <h3>Debt history</h3>
-      <p class="note">Every debt ever recorded for this farm, including settled ones.</p>
-      <div class="list" id="debtHistoryList"></div>
-    </div>
+    <!-- HISTORY -->
+    <section class="view" id="history">
+      <div class="card">
+        <h2>History</h2>
+        <p class="note">Older records live here to keep your main screens tidy. Settled debts move here automatically.</p>
+        <div class="seg" id="historySeg">
+          <button type="button" class="on" data-val="debts" id="histSegDebts">Settled debts</button>
+          <button type="button" data-val="tx">Transactions</button>
+        </div>
+        <div class="lot-filter" data-lot-filter></div>
+        <div id="debtHistoryCard">
+          <div class="list" id="debtHistoryList"></div>
+        </div>
+        <div id="txHistoryCard" style="display:none">
+          <div class="list" id="txHistoryList"></div>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
 
