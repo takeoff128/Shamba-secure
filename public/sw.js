@@ -1,8 +1,9 @@
-const CACHE_NAME = 'shamba-secure-shell-v3';
+const CACHE_NAME = 'shamba-secure-shell-v5';
 const SHELL_FILES = [
   '/',
   '/styles.css',
   '/app.js',
+  '/i18n.js',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

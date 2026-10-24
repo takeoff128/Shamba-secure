@@ -299,4 +299,9 @@ A chat assistant sits bottom-right on every screen and in the menu. It answers h
 - **AI mode**: set `ANTHROPIC_API_KEY` (optional `ASSISTANT_MODEL`) in the hosting service's environment. It uses Claude with read-only tools.
 - **Offline mode**: with no key it searches `assistant/knowledge.md` and answers from the manual plus basic figures.
 - **Safety**: every tool is read-only and scoped to the signed-in user's farm in SQL; record text is treated as untrusted data; requests are rate limited per user (30 per 10 minutes).
+- **Answer style**: replies lead with the answer, at most 5 steps, usually under 70 words (`max_tokens` 500). The chat shows a short "thinking" pause (about 1–2 s, with status lines) and then types the reply out; both are skipped when the device asks for reduced motion. Offline answers return only the 2–3 most relevant guide sentences.
 - **Keeping it smart**: when you add or change a feature, update `assistant/knowledge.md` so the assistant knows about it.
+
+## Languages
+
+The globe button (top right, also on the login screen) switches between English and Kiswahili. Translations live in `public/i18n.js` as exact-English-string dictionaries, applied automatically to everything the app renders. To add a language, add an entry to `LANGS` and a dictionary under `D`. Untranslated strings simply stay in English. The AI assistant replies in the chosen language; the offline guide answers in English. Reminder/SMS texts sent by the server are still English.

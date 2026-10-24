@@ -3,7 +3,7 @@
 Shamba Secure is a private farm-management app for small farms. It tracks money (income, expenses, debts), livestock (cows, goats, chickens), poultry lots (broilers and layers), reminders, and the team. Each farm is its own private account; one farm can never see another farm's records. It works on a phone browser and can be installed to the home screen like an app.
 
 ## Navigating the app
-Tap the hamburger menu (three lines, top left) to open the side menu: Overview, Finance, Livestock, Poultry, Reminders, Team, History, Profile & farm settings, and Log out. Tapping the farm name or logo in the header also opens Profile & farm settings. The "Ask" assistant button sits at the bottom right of every screen.
+The language button (globe with EN or SW) at the top right switches the whole app between English and Kiswahili; the choice is remembered on the device, and it is also on the login screen. Log out now lives at the bottom of the side menu. Tap the hamburger menu (three lines, top left) to open the side menu: Overview, Finance, Livestock, Poultry, Reminders, Team, History, Profile & farm settings, and Log out. Tapping the farm name or logo in the header also opens Profile & farm settings. The "Ask" assistant button sits at the bottom right of every screen.
 
 ## Getting started: registering and logging in
 On the login screen choose "Start a new farm". Enter the farm name, your name, currency, phone number, email, a password (at least 6 characters), and choose how to verify: Email (SMS verification may be temporarily unavailable). A 6-digit code is sent; enter it to create the account. The person who registers becomes the Owner. The verification choice also becomes the password-reset method.

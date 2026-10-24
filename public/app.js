@@ -2077,7 +2077,9 @@ const ASST_SUGGESTIONS = [
   'Where did my settled debt go?',
   'Why are notifications blocked?'
 ];
-const asst = { messages: [], busy: false, mode: null };
+const asst = { messages: [], busy: false, mode: null, thinking: null, typing: null };
+const ASST_AVATAR = '<span class="asst-orb" aria-hidden="true">' + '<svg viewBox="0 0 32 32" aria-hidden="true" class="asst-glyph"><path d="M16 27V16" stroke="#f4e4c1" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M16 18.5C10.5 18.5 7.5 15.2 7.5 10.5C12.6 10.5 16 13.4 16 18.5Z" fill="#9fcf7a"/><path d="M16 16C16 10.8 19.3 7.3 24.8 7.3C24.8 12.5 21.5 16 16 16Z" fill="#c9e7a6"/><path class="asst-spark" d="M24 19.2l.95 2.35 2.35.95-2.35.95-.95 2.35-.95-2.35-2.35-.95 2.35-.95z" fill="#f2c45a"/><circle class="asst-spark2" cx="9" cy="23.5" r="1.1" fill="#f2c45a"/></svg>' + '</span>';
+const ASST_REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const VIEW_LABELS = { dash:'Overview', money:'Finance', livestock:'Livestock', broilers:'Poultry', reminders:'Reminders', team:'Team', history:'History' };
 
 function asstSave(){ try{ sessionStorage.setItem(ASST_KEY, JSON.stringify(asst.messages.slice(-30))); }catch(e){} }
@@ -2112,11 +2114,15 @@ function asstRender(){
   if (asst.messages.length === 0){
     body.innerHTML = '<div class="asst-hello">Hi' + (state.name ? ' ' + escapeHtml(state.name.split(' ')[0]) : '') + '! I can show you how to do things in the app and look up your farm\'s numbers. What would you like to know?</div>';
   } else {
-    body.innerHTML = asst.messages.map(m => m.role === 'user'
-      ? `<div class="asst-msg user">${escapeHtml(m.content)}</div>`
-      : `<div class="asst-msg ${m.error ? 'err' : 'bot'}">${m.error ? escapeHtml(m.content) : asstFormat(m.content)}</div>`).join('');
+    body.innerHTML = asst.messages.map((m, i) => {
+      if (m.role === 'user') return `<div class="asst-msg user" data-notr>${escapeHtml(m.content)}</div>`;
+      if (m.error) return `<div class="asst-msg err" data-notr>${escapeHtml(m.content)}</div>`;
+      const typing = asst.typing && asst.typing.index === i;
+      const html = typing ? asstFormat(asst.typing.shown) : asstFormat(m.content);
+      return `<div class="asst-row bot">${ASST_AVATAR}<div class="asst-msg bot" data-notr${typing ? ' id="asstTypingMsg"' : ''}>${html}${typing ? '<span class="asst-caret"></span>' : ''}</div></div>`;
+    }).join('');
   }
-  if (asst.busy) body.insertAdjacentHTML('beforeend', '<div class="asst-msg bot"><span class="asst-typing"><i></i><i></i><i></i></span></div>');
+  if (asst.thinking) body.insertAdjacentHTML('beforeend', `<div class="asst-row bot thinking">${ASST_AVATAR}<div class="asst-msg bot asst-thinking"><span class="asst-think-label" id="asstThinkLabel">${escapeHtml(asst.thinking)}</span><span class="asst-typing"><i></i><i></i><i></i></span></div></div>`);
   body.scrollTop = body.scrollHeight;
   const sug = document.getElementById('asstSuggest');
   sug.innerHTML = asst.messages.length === 0
@@ -2130,22 +2136,78 @@ function asstContext(){
   const lot = selectedLot ? selectedLot() : null;
   return {
     screen: view ? (VIEW_LABELS[view.id] || view.id) : '',
-    lot: lot ? lot.name : (state.lotFilter === 'none' ? 'Farm-wide only' : '')
+    lot: lot ? lot.name : (state.lotFilter === 'none' ? 'Farm-wide only' : ''),
+    lang: (window.i18n && window.i18n.lang) || 'en'
   };
+}
+
+const asstWait = ms => new Promise(r => setTimeout(r, ms));
+// Status lines shown while the assistant "thinks", picked from what was asked.
+function asstThinkSteps(q){
+  q = q.toLowerCase();
+  const data = /(how much|how many|total|balance|profit|owe|owed|owing|debt|lot|bird|mortality|sold|sales|income|expens|spent|reminder|due|animal|herd|cow|goat|performance|doing)/.test(q);
+  return data
+    ? ['Thinking', 'Checking your farm records', 'Working out the numbers']
+    : ['Thinking', 'Looking through the app guide', 'Putting the steps together'];
+}
+function asstSetThinking(label){
+  asst.thinking = label;
+  const el = document.getElementById('asstThinkLabel');
+  if (el) el.textContent = label; else asstRender();
+}
+// Reveal the reply a few words at a time, like it is being typed.
+async function asstTypeOut(index){
+  const full = asst.messages[index].content;
+  const parts = full.split(/(\s+)/);
+  if (ASST_REDUCED || parts.length < 6){ asst.typing = null; return; }
+  const step = Math.max(1, Math.ceil(parts.length / 90));          // cap at ~90 frames
+  const delay = Math.max(12, Math.min(34, 1800 / (parts.length / step)));
+  asst.typing = { index, shown: '' };
+  asstRender();
+  const body = document.getElementById('asstBody');
+  for (let k = step; k < parts.length + step; k += step){
+    asst.typing.shown = parts.slice(0, k).join('');
+    const el = document.getElementById('asstTypingMsg');
+    if (!el || !asst.typing) break;                                 // chat cleared or panel re-rendered
+    el.innerHTML = asstFormat(asst.typing.shown) + '<span class="asst-caret"></span>';
+    body.scrollTop = body.scrollHeight;
+    await asstWait(delay);
+  }
+  asst.typing = null;
 }
 
 async function asstSend(text){
   text = (text || '').trim();
   if (!text || asst.busy) return;
   asst.messages.push({ role:'user', content: text });
-  asst.busy = true; asstSave(); asstRender();
+  asst.busy = true; asstSave();
+  const gen = asst.gen = (asst.gen || 0) + 1;
+  const steps = asstThinkSteps(text);
+  asst.thinking = steps[0]; asstRender();
+  const started = Date.now();
+  const minThink = ASST_REDUCED ? 300 : 1100 + Math.round(Math.random() * 700);   // short pause so it reads as considered, not instant
+  let stepIdx = 0;
+  const ticker = setInterval(() => { if (gen === asst.gen && stepIdx < steps.length - 1) asstSetThinking(steps[++stepIdx]); }, 900);
+  let reply = null, failed = null;
   try{
     const payload = asst.messages.filter(m => !m.error).slice(-12).map(m => ({ role:m.role, content:m.content }));
     const res = await api('/assistant', { method:'POST', body:{ messages: payload, context: asstContext() } });
-    asst.messages.push({ role:'assistant', content: res.reply });
+    reply = res.reply;
     if (res.mode) asstSetMode(res.mode);
   }catch(e){
-    asst.messages.push({ role:'assistant', error:true, content: (e && e.message) || 'Something went wrong. Please try again.' });
+    failed = (e && e.message) || 'Something went wrong. Please try again.';
+  }
+  const left = minThink - (Date.now() - started);
+  if (left > 0) await asstWait(left);
+  clearInterval(ticker);
+  if (gen !== asst.gen) return;                                      // chat was cleared meanwhile
+  asst.thinking = null;
+  if (failed !== null){
+    asst.messages.push({ role:'assistant', error:true, content: failed });
+  } else {
+    asst.messages.push({ role:'assistant', content: reply });
+    asstSave();
+    await asstTypeOut(asst.messages.length - 1);
   }
   asst.busy = false; asstSave(); asstRender();
 }
@@ -2174,7 +2236,7 @@ function closeAsst(){
 document.getElementById('asstFab').addEventListener('click', openAsst);
 document.getElementById('asstCloseBtn').addEventListener('click', closeAsst);
 document.getElementById('drawerAskBtn').addEventListener('click', ()=>{ closeDrawer(); openAsst(); });
-document.getElementById('asstNewBtn').addEventListener('click', ()=>{ asst.messages = []; asst.busy = false; asstSave(); asstRender(); document.getElementById('asstInput').focus(); });
+document.getElementById('asstNewBtn').addEventListener('click', ()=>{ asst.gen = (asst.gen || 0) + 1; asst.messages = []; asst.busy = false; asst.thinking = null; asst.typing = null; asstSave(); asstRender(); document.getElementById('asstInput').focus(); });
 document.getElementById('asstSuggest').addEventListener('click', e => {
   const b = e.target.closest('button[data-q]'); if (b) asstSend(b.dataset.q);
 });
