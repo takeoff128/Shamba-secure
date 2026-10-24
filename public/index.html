@@ -173,8 +173,13 @@
 
     <!-- DASHBOARD -->
     <section class="view active" id="dash">
+      <div class="card scope-card">
+        <h2>Viewing</h2>
+        <p class="note">Pick a lot to filter the whole app to it: this overview, transactions, debts, history, mortality, reminders and performance.</p>
+        <div class="lot-filter" data-lot-filter></div>
+      </div>
       <div class="card">
-        <h2>Where things stand</h2>
+        <h2 id="dashStatsTitle">Where things stand</h2>
         <div class="grid-3" id="dashStats"></div>
       </div>
       <div class="card">
@@ -185,8 +190,12 @@
         </div>
       </div>
       <div class="card">
-        <h2>Herd snapshot</h2>
+        <h2 id="dashHerdTitle">Herd snapshot</h2>
         <div class="grid-3" id="dashHerd"></div>
+      </div>
+      <div class="card" id="dashMortCard">
+        <h2 id="dashMortTitle">Mortality</h2>
+        <div class="list" id="dashMortList"></div>
       </div>
     </section>
 

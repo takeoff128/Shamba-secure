@@ -259,3 +259,6 @@ section.view.active{display:block;}
 .notif-sheet-card p{font-size:14px;color:var(--ink-soft);line-height:1.5;margin:0 0 6px;}
 .np-steps{text-align:left;font-size:13px;color:var(--ink);background:var(--paper);border-radius:10px;padding:10px 12px;margin:10px 0 4px;line-height:1.55;}
 .np-later{display:block;margin:8px auto 0;}
+
+.scope-card{border-left:4px solid var(--gold-500);}
+.scope-card .lot-filter{margin-bottom:0;}

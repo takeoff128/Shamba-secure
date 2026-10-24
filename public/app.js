@@ -669,6 +669,8 @@ async function loadAll(){
   ]);
   state.tx = tx; state.debts = debts; state.animals = animals; state.users = users;
   state.reminders = reminders; state.lots = lots;
+  state.mortality = {};
+  await Promise.all(lots.map(async l => { try{ state.mortality[l.id] = await api('/broiler-lots/'+l.id+'/mortality'); }catch(e){ state.mortality[l.id] = []; } }));
   renderAll();
 }
 function renderAll(){
@@ -797,10 +799,10 @@ function renderAnimalSalesSummary(){
     // Direct cash sales — excluding the auto-created "Debt settlement"
     // transactions, since those are counted from the debt itself below
     // (a sale counts the moment it happens, not only once it's paid).
-    const cashSales = state.tx.filter(tx => tx.type === 'income' && tx.category !== 'Debt settlement' && tx.livestock_type === t);
+    const cashSales = filteredTx().filter(tx => tx.type === 'income' && tx.category !== 'Debt settlement' && tx.livestock_type === t);
     // Sales made on credit — counted as soon as the debt is recorded,
     // whether or not it's been paid yet.
-    const creditSales = state.debts.filter(d => d.direction === 'owed_to_me' && d.livestock_type === t);
+    const creditSales = filteredDebts().filter(d => d.direction === 'owed_to_me' && d.livestock_type === t);
 
     const pieces = cashSales.reduce((s, tx) => s + (tx.quantity || 0), 0)
       + creditSales.reduce((s, d) => s + (d.quantity || 0), 0);
@@ -1040,7 +1042,8 @@ function totalLost(lot){ return lot.total_lost || 0; }
 function renderLots(){
   const el = document.getElementById('lotList');
   if (state.lots.length===0){ el.innerHTML = '<div class="empty">No lots started yet.</div>'; return; }
-  el.innerHTML = state.lots.map(lot=>{
+  const shownLots = selectedLot() ? [selectedLot()] : state.lots;
+  el.innerHTML = shownLots.map(lot=>{
     const dayNum = daysBetween(lot.start_date, todayStr());
     const next = scheduleFor(lot.poultry_type).find(s => s.day > dayNum);
     const dayLabel = dayNum < 0 ? 'Not started yet' : `Day ${dayNum} of ${lot.cycle_days}`;
@@ -1155,6 +1158,7 @@ async function loadLotReminders(lotId){
 
 async function loadMortality(lotId){
   const rows = await api('/broiler-lots/'+lotId+'/mortality');
+  state.mortality[lotId] = rows; renderDashMortality();
   const el = document.getElementById('mortalityList');
   if (rows.length===0){ el.innerHTML = '<div class="empty">No losses recorded.</div>'; return; }
   el.innerHTML = rows.map(m=>`
@@ -1392,8 +1396,14 @@ async function deleteReminder(id){
 
 function renderReminders(){
   const el = document.getElementById('reminderList');
-  if (state.reminders.length===0){ el.innerHTML = '<div class="empty">No reminders yet.</div>'; return; }
-  el.innerHTML = state.reminders.map(r=>`
+  const lot = selectedLot();
+  let list = state.reminders;
+  if (lot){
+    const debtIds = new Set(state.debts.filter(d => d.lot_id === lot.id).map(d => d.id));
+    list = list.filter(r => (r.subject_type === 'broiler_lot' && r.subject_id === lot.id) || (r.subject_type === 'debt' && debtIds.has(r.subject_id)));
+  }
+  if (list.length===0){ el.innerHTML = '<div class="empty">' + (lot ? 'No reminders for this lot.' : 'No reminders yet.') + '</div>'; return; }
+  el.innerHTML = list.map(r=>`
     <div class="item">
       <div><div class="name">${escapeHtml(r.message)}</div>
         <div class="meta">${r.remind_date} &middot; ${labelForSubject(r.subject_type)}</div></div>
@@ -1451,27 +1461,64 @@ async function removeUser(id){
 
 // ---------------- DASHBOARD ----------------
 function renderDash(){
-  const income = state.tx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
-  const expense = state.tx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const lot = selectedLot();
+  const txs = filteredTx(), debts = filteredDebts();
+  const income = txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const expense = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
   const net = income - expense;
+  const scopeLabel = lot ? ' \u00b7 ' + escapeHtml(lot.name) : (state.lotFilter === 'none' ? ' \u00b7 farm-wide' : '');
+  document.getElementById('dashStatsTitle').innerHTML = 'Where things stand' + scopeLabel;
   document.getElementById('dashStats').innerHTML = `
     <div class="stat ${net>=0?'pos':'neg'}"><div class="stat-icon">⚖️</div><div class="label">Net balance</div><div class="value">${fmtMoney(net)}</div></div>
     <div class="stat pos"><div class="stat-icon">\u{1F4C8}</div><div class="label">Total in</div><div class="value">${fmtMoney(income)}</div></div>
     <div class="stat neg"><div class="stat-icon">\u{1F4C9}</div><div class="label">Total out</div><div class="value">${fmtMoney(expense)}</div></div>
   `;
-  const owedToMe = state.debts.filter(d=>d.direction==='owed_to_me' && !d.settled).reduce((s,d)=>s+d.amount,0);
-  const iOwe = state.debts.filter(d=>d.direction==='i_owe' && !d.settled).reduce((s,d)=>s+d.amount,0);
+  const owedToMe = debts.filter(d=>d.direction==='owed_to_me' && !d.settled).reduce((s,d)=>s+d.amount,0);
+  const iOwe = debts.filter(d=>d.direction==='i_owe' && !d.settled).reduce((s,d)=>s+d.amount,0);
   document.getElementById('dashOwedToMe').textContent = fmtMoney(owedToMe);
   document.getElementById('dashIOwe').textContent = fmtMoney(iOwe);
 
-  const active = state.animals.filter(a=>a.status==='active').length;
-  const sold = state.animals.filter(a=>a.status==='sold').length;
-  const deceased = state.animals.filter(a=>a.status==='deceased').length;
-  document.getElementById('dashHerd').innerHTML = `
-    <div class="stat pos"><div class="stat-icon">\u{1F7E2}</div><div class="label">Active</div><div class="value">${active}</div></div>
-    <div class="stat"><div class="stat-icon">\u{1F4B5}</div><div class="label">Sold</div><div class="value">${sold}</div></div>
-    <div class="stat neg"><div class="stat-icon">✕</div><div class="label">Deceased</div><div class="value">${deceased}</div></div>
-  `;
+  if (lot){
+    const lost = totalLost(lot), qty = lot.quantity || 0, remaining = qty - lost;
+    document.getElementById('dashHerdTitle').textContent = 'Lot snapshot';
+    document.getElementById('dashHerd').innerHTML = `
+      <div class="stat"><div class="label">Birds started</div><div class="value">${qty || '\u2014'}</div></div>
+      <div class="stat pos"><div class="label">Remaining</div><div class="value">${qty ? remaining : '\u2014'}</div></div>
+      <div class="stat neg"><div class="label">Lost${qty ? ' (' + (lost/qty*100).toFixed(1) + '%)' : ''}</div><div class="value">${lost}</div></div>
+    `;
+  } else {
+    const active = state.animals.filter(a=>a.status==='active').length;
+    const sold = state.animals.filter(a=>a.status==='sold').length;
+    const deceased = state.animals.filter(a=>a.status==='deceased').length;
+    document.getElementById('dashHerdTitle').textContent = 'Herd snapshot';
+    document.getElementById('dashHerd').innerHTML = `
+      <div class="stat pos"><div class="stat-icon">\u{1F7E2}</div><div class="label">Active</div><div class="value">${active}</div></div>
+      <div class="stat"><div class="stat-icon">\u{1F4B5}</div><div class="label">Sold</div><div class="value">${sold}</div></div>
+      <div class="stat neg"><div class="stat-icon">✕</div><div class="label">Deceased</div><div class="value">${deceased}</div></div>
+    `;
+  }
+  renderDashMortality();
+}
+
+// Mortality log for the Overview: every recorded loss for the selected lot,
+// or across all lots when no lot is selected.
+function renderDashMortality(){
+  const card = document.getElementById('dashMortCard'); if (!card) return;
+  const lot = selectedLot();
+  if (state.lotFilter === 'none' || state.lots.length === 0){ card.style.display = 'none'; return; }
+  card.style.display = '';
+  const lots = lot ? [lot] : state.lots;
+  const rows = lots.flatMap(l => (state.mortality[l.id] || []).map(m => ({ ...m, lotName: l.name })))
+    .sort((a,b) => (b.event_date || '').localeCompare(a.event_date || '') || b.id - a.id);
+  const total = rows.reduce((s,m)=>s+m.quantity_lost,0);
+  document.getElementById('dashMortTitle').innerHTML = 'Mortality' + (lot ? ' \u00b7 ' + escapeHtml(lot.name) : '') + (total ? ` <span class="meta" style="font-weight:600">(${total} lost)</span>` : '');
+  document.getElementById('dashMortList').innerHTML = rows.length === 0
+    ? '<div class="empty">No losses recorded.</div>'
+    : rows.map(m => `
+      <div class="item">
+        <div><div class="name">${m.quantity_lost} lost</div>
+          <div class="meta">${m.event_date}${lot ? '' : ' \u00b7 ' + escapeHtml(m.lotName)}${m.note ? ' \u00b7 ' + escapeHtml(m.note) : ''}</div></div>
+      </div>`).join('');
 }
 
 function txRowHtml(t){
@@ -1783,6 +1830,7 @@ document.getElementById('saveDebtEditBtn').addEventListener('click', async ()=>{
 // =====================================================================
 // Lot filter (transactions / debts / history) and lot performance charts
 // =====================================================================
+state.mortality = {};
 state.lotFilter = '';          // '' = all records, 'none' = farm-wide only, else a lot id
 state.fromMaturity = false;    // when a lot is picked: only records dated on/after it matured
 state.perf = { scope:'all', metric:'expense', chart:'bar' };
@@ -1848,13 +1896,17 @@ function renderLotFilters(){
     box.innerHTML = lotFilterHtml();
   });
 }
+function applyLotFilter(value, fromMaturity){
+  state.lotFilter = value || '';
+  state.fromMaturity = !!fromMaturity;
+  state.perf.scope = (state.lotFilter && state.lotFilter !== 'none') ? state.lotFilter : 'all';
+  renderAll();
+}
 document.addEventListener('change', e => {
   if (e.target.classList && e.target.classList.contains('lf-select')){
-    state.lotFilter = e.target.value; state.fromMaturity = false;
-    renderTx(); renderDebts(); renderTxHistory(); renderDebtHistory(); renderLotFilters();
+    applyLotFilter(e.target.value, false);
   } else if (e.target.classList && e.target.classList.contains('lf-mature')){
-    state.fromMaturity = e.target.checked;
-    renderTx(); renderDebts(); renderTxHistory(); renderDebtHistory(); renderLotFilters();
+    applyLotFilter(state.lotFilter, e.target.checked);
   }
 });
 
@@ -1985,7 +2037,7 @@ function renderPerformance(){
   }
 }
 
-document.getElementById('perfScope').addEventListener('change', e => { state.perf.scope = e.target.value; renderPerformance(); });
+document.getElementById('perfScope').addEventListener('change', e => { applyLotFilter(e.target.value === 'all' ? '' : e.target.value, false); });
 document.getElementById('perfMetric').addEventListener('change', e => { state.perf.metric = e.target.value; renderPerformance(); });
 document.querySelectorAll('#perfChartSeg button').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('#perfChartSeg button').forEach(x => x.classList.remove('on'));
