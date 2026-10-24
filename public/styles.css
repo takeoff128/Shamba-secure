@@ -262,3 +262,22 @@ section.view.active{display:block;}
 
 .scope-card{border-left:4px solid var(--gold-500);}
 .scope-card .lot-filter{margin-bottom:0;}
+
+/* ---- Compact lot chips (WhatsApp-style filter row) ---- */
+.lot-filter{padding:0;border:none;background:none;margin:6px 0 10px;}
+.scope-bar{margin:0 0 12px;}
+.chip-row{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.chip-row::-webkit-scrollbar{display:none;}
+.chip{flex:0 0 auto;border:1px solid var(--line);background:var(--white);color:var(--ink-soft);font-size:13px;font-weight:600;
+  padding:7px 14px;border-radius:20px;cursor:pointer;white-space:nowrap;max-width:170px;overflow:hidden;text-overflow:ellipsis;
+  transition:background .15s,color .15s,border-color .15s;}
+.chip:hover{border-color:var(--leaf-600);}
+.chip.on{background:var(--leaf-700);border-color:var(--leaf-700);color:#fff;}
+select.chip{appearance:none;-webkit-appearance:none;width:auto;padding:7px 14px;text-align-last:center;}
+select.chip.on{background:var(--leaf-700);}
+.chip-info{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:12px;color:var(--ink-soft);margin:2px 4px 0;}
+.chip-info b{color:var(--ink);}
+.chip-info .pos{color:var(--leaf-700);font-weight:700;}
+.chip-info .neg{color:var(--rust-600);font-weight:700;}
+.chip-info label.lf-check{display:inline-flex;margin:0;gap:6px;align-items:center;}
+.chip-info label.lf-check input{width:auto;margin:0;}

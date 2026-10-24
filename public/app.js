@@ -1867,9 +1867,20 @@ function filteredDebts(){
 
 function lotFilterHtml(){
   const lot = selectedLot();
-  const opts = '<option value="">All records</option><option value="none">Farm-wide only (no lot)</option>'
-    + state.lots.map(l => `<option value="${l.id}"${String(l.id)===String(state.lotFilter)?' selected':''}>${escapeHtml(l.name)}</option>`).join('');
-  let extra = '';
+  // Three latest lots (newest start date first) get their own chips; older
+  // ones live in a "More" menu. A selected older lot is shown as a chip too.
+  const sorted = [...state.lots].sort((a,b) => (b.start_date||'').localeCompare(a.start_date||'') || b.id - a.id);
+  let chipLots = sorted.slice(0, 3);
+  const older = sorted.slice(3);
+  if (lot && !chipLots.some(l => l.id === lot.id)) chipLots = [...chipLots, lot];
+  const moreLots = older.filter(l => !chipLots.some(c => c.id === l.id));
+  const chip = (val, label) => `<button type="button" class="chip${String(state.lotFilter)===String(val)?' on':''}" data-lot="${val}">${label}</button>`;
+  let row = chip('', 'All') + chip('none', 'Farm-wide') + chipLots.map(l => chip(l.id, escapeHtml(l.name))).join('');
+  if (moreLots.length){
+    row += `<select class="chip lf-more" aria-label="Older lots"><option value="">More\u2026</option>`
+      + moreLots.map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('') + `</select>`;
+  }
+  let info = '';
   if (lot){
     const mat = lotMaturityDate(lot);
     const diff = daysBetween(todayStr(), mat);
@@ -1880,13 +1891,11 @@ function lotFilterHtml(){
     const exp = tx.filter(t=>t.type==='expense' && t.category!=='Debt settlement').reduce((s,t)=>s+t.amount,0)
       + debts.filter(d=>d.direction==='i_owe').reduce((s,d)=>s+d.amount,0);
     const net = inc - exp;
-    extra = `
-      <label class="lf-check"><input type="checkbox" class="lf-mature"${state.fromMaturity?' checked':''}> Only from the maturity date (${mat})</label>
-      <div class="lot-summary"><b>${escapeHtml(lot.name)}</b> started ${lot.start_date} &middot; matures ${mat} (${when})<br>
-        Income <span class="pos">${fmtMoney(inc)}</span> &middot; Expenses <span class="neg">${fmtMoney(exp)}</span> &middot;
-        Net <span class="${net>=0?'pos':'neg'}">${fmtMoney(net)}</span></div>`;
+    info = `<div class="chip-info"><span>Matures <b>${mat}</b> (${when})</span>
+      <span>Net <span class="${net>=0?'pos':'neg'}">${fmtMoney(net)}</span></span>
+      <label class="lf-check"><input type="checkbox" class="lf-mature"${state.fromMaturity?' checked':''}> From maturity only</label></div>`;
   }
-  return `<label style="margin-top:0">Show records for</label><select class="lf-select">${opts}</select>${extra}`;
+  return `<div class="chip-row">${row}</div>${info}`;
 }
 
 function renderLotFilters(){
@@ -1902,9 +1911,13 @@ function applyLotFilter(value, fromMaturity){
   state.perf.scope = (state.lotFilter && state.lotFilter !== 'none') ? state.lotFilter : 'all';
   renderAll();
 }
+document.addEventListener('click', e => {
+  const c = e.target.closest && e.target.closest('.chip[data-lot]');
+  if (c) applyLotFilter(c.dataset.lot, false);
+});
 document.addEventListener('change', e => {
-  if (e.target.classList && e.target.classList.contains('lf-select')){
-    applyLotFilter(e.target.value, false);
+  if (e.target.classList && e.target.classList.contains('lf-more')){
+    if (e.target.value) applyLotFilter(e.target.value, false);
   } else if (e.target.classList && e.target.classList.contains('lf-mature')){
     applyLotFilter(state.lotFilter, e.target.checked);
   }
