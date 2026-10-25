@@ -2070,12 +2070,14 @@ document.getElementById('perfMetric').parentElement.style.display = 'none';
 // =====================================================================
 const ASST_KEY = 'ss_asst_chat';
 const ASST_SUGGESTIONS = [
+  'My chickens have diarrhoea, what could it be?',
+  'Broiler vaccination schedule',
+  'Price of a tray of eggs today',
+  'Is my lot growing on target?',
+  'Milk price per litre now',
   'How do I record a sale?',
   'Who owes me money?',
-  'How is my latest lot doing?',
-  'What reminders are coming up?',
-  'Where did my settled debt go?',
-  'Why are notifications blocked?'
+  'Goat with pale eyelids'
 ];
 const asst = { messages: [], busy: false, mode: null, thinking: null, typing: null };
 const ASST_AVATAR = '<span class="asst-orb" aria-hidden="true">' + '<svg viewBox="0 0 32 32" aria-hidden="true" class="asst-glyph"><path d="M16 27V16" stroke="#f4e4c1" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M16 18.5C10.5 18.5 7.5 15.2 7.5 10.5C12.6 10.5 16 13.4 16 18.5Z" fill="#9fcf7a"/><path d="M16 16C16 10.8 19.3 7.3 24.8 7.3C24.8 12.5 21.5 16 16 16Z" fill="#c9e7a6"/><path class="asst-spark" d="M24 19.2l.95 2.35 2.35.95-2.35.95-.95 2.35-.95-2.35-2.35-.95 2.35-.95z" fill="#f2c45a"/><circle class="asst-spark2" cx="9" cy="23.5" r="1.1" fill="#f2c45a"/></svg>' + '</span>';
@@ -2091,7 +2093,8 @@ function asstLoad(){
 function asstFormat(text){
   const inline = s => escapeHtml(s)
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>');
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   const out = []; let list = null; let para = [];
   const flushPara = () => { if (para.length){ out.push('<p>' + para.map(inline).join('<br>') + '</p>'); para = []; } };
   const flushList = () => { if (list){ out.push(`<${list.t}>` + list.items.map(i => '<li>' + inline(i) + '</li>').join('') + `</${list.t}>`); list = null; } };
@@ -2109,17 +2112,22 @@ function asstFormat(text){
   return out.join('');
 }
 
+function asstHost(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return 'link'; } }
+
 function asstRender(){
   const body = document.getElementById('asstBody');
   if (asst.messages.length === 0){
-    body.innerHTML = '<div class="asst-hello">Hi' + (state.name ? ' ' + escapeHtml(state.name.split(' ')[0]) : '') + '! I can show you how to do things in the app and look up your farm\'s numbers. What would you like to know?</div>';
+    body.innerHTML = '<div class="asst-hello">Hi' + (state.name ? ' ' + escapeHtml(state.name.split(' ')[0]) : '') + '! Ask me how to use the app, about your farm\'s numbers, or about animal health, feeding, vaccination and market prices.</div>';
   } else {
     body.innerHTML = asst.messages.map((m, i) => {
       if (m.role === 'user') return `<div class="asst-msg user" data-notr>${escapeHtml(m.content)}</div>`;
       if (m.error) return `<div class="asst-msg err" data-notr>${escapeHtml(m.content)}</div>`;
       const typing = asst.typing && asst.typing.index === i;
       const html = typing ? asstFormat(asst.typing.shown) : asstFormat(m.content);
-      return `<div class="asst-row bot">${ASST_AVATAR}<div class="asst-msg bot" data-notr${typing ? ' id="asstTypingMsg"' : ''}>${html}${typing ? '<span class="asst-caret"></span>' : ''}</div></div>`;
+      const src = (!typing && Array.isArray(m.sources) && m.sources.length)
+        ? '<div class="asst-sources"><span>Sources</span>' + m.sources.filter(s => /^https?:\/\//.test(s.url)).map(s => `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" data-notr>${escapeHtml(asstHost(s.url))}<small>${escapeHtml(s.title || '')}</small></a>`).join('') + '</div>'
+        : '';
+      return `<div class="asst-row bot">${ASST_AVATAR}<div class="asst-msg bot"${typing ? ' id="asstTypingMsg"' : ''}><div data-notr>${html}${typing ? '<span class="asst-caret"></span>' : ''}</div>${src}</div></div>`;
     }).join('');
   }
   if (asst.thinking) body.insertAdjacentHTML('beforeend', `<div class="asst-row bot thinking">${ASST_AVATAR}<div class="asst-msg bot asst-thinking"><span class="asst-think-label" id="asstThinkLabel">${escapeHtml(asst.thinking)}</span><span class="asst-typing"><i></i><i></i><i></i></span></div></div>`);
@@ -2146,6 +2154,9 @@ const asstWait = ms => new Promise(r => setTimeout(r, ms));
 function asstThinkSteps(q){
   q = q.toLowerCase();
   const data = /(how much|how many|total|balance|profit|owe|owed|owing|debt|lot|bird|mortality|sold|sales|income|expens|spent|reminder|due|animal|herd|cow|goat|performance|doing)/.test(q);
+  if (/(price|bei|cost|market|sell|tray)/.test(q)) return ['Thinking', 'Checking current market prices', 'Comparing sources'];
+  if (/(sick|disease|dying|died|dead|diarrh|cough|fever|swollen|pale|lame|vaccin|deworm|worm|mastitis|bloat|not eating)/.test(q)) return ['Thinking', 'Checking the livestock health guide', 'Putting the advice together'];
+  if (/(feed|weight|grow|brood|gestation|heat|breed|egg|milk|kienyeji|goat|sheep|pig|rabbit|cow|calf)/.test(q)) return ['Thinking', 'Checking the livestock guide', 'Putting the answer together'];
   return data
     ? ['Thinking', 'Checking your farm records', 'Working out the numbers']
     : ['Thinking', 'Looking through the app guide', 'Putting the steps together'];
@@ -2169,7 +2180,7 @@ async function asstTypeOut(index){
     asst.typing.shown = parts.slice(0, k).join('');
     const el = document.getElementById('asstTypingMsg');
     if (!el || !asst.typing) break;                                 // chat cleared or panel re-rendered
-    el.innerHTML = asstFormat(asst.typing.shown) + '<span class="asst-caret"></span>';
+    el.innerHTML = '<div data-notr>' + asstFormat(asst.typing.shown) + '<span class="asst-caret"></span></div>';
     body.scrollTop = body.scrollHeight;
     await asstWait(delay);
   }
@@ -2188,11 +2199,11 @@ async function asstSend(text){
   const minThink = ASST_REDUCED ? 300 : 1100 + Math.round(Math.random() * 700);   // short pause so it reads as considered, not instant
   let stepIdx = 0;
   const ticker = setInterval(() => { if (gen === asst.gen && stepIdx < steps.length - 1) asstSetThinking(steps[++stepIdx]); }, 900);
-  let reply = null, failed = null;
+  let reply = null, failed = null, replySources = [];
   try{
     const payload = asst.messages.filter(m => !m.error).slice(-12).map(m => ({ role:m.role, content:m.content }));
     const res = await api('/assistant', { method:'POST', body:{ messages: payload, context: asstContext() } });
-    reply = res.reply;
+    reply = res.reply; replySources = Array.isArray(res.sources) ? res.sources.slice(0, 6) : [];
     if (res.mode) asstSetMode(res.mode);
   }catch(e){
     failed = (e && e.message) || 'Something went wrong. Please try again.';
@@ -2205,7 +2216,7 @@ async function asstSend(text){
   if (failed !== null){
     asst.messages.push({ role:'assistant', error:true, content: failed });
   } else {
-    asst.messages.push({ role:'assistant', content: reply });
+    asst.messages.push({ role:'assistant', content: reply, sources: replySources });
     asstSave();
     await asstTypeOut(asst.messages.length - 1);
   }

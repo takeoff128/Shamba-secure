@@ -83,6 +83,9 @@ Mortality % = birds lost / birds started. Average price per bird = lot income / 
 - Page looks old after an update: close and reopen the app, or reload; installed apps can take a moment to refresh.
 - Session expired or "Your access has been removed": log in again; if removed, contact the farm owner.
 
+## Livestock and poultry advice in the assistant
+The assistant also answers questions about animal health (signs, likely causes, what to do now, when to call a vet), vaccination schedules, feeding, growth targets, breeding and Kenyan market prices, for poultry, cattle, goats, sheep, pigs and rabbits. Answers are general guidance, not a diagnosis, and never include drug doses. Prices come with a date and source; with live search on it checks current prices on the web.
+
 ## Privacy and data
 All data is scoped to your farm; sessions are signed, httpOnly cookies and are re-checked against the database on every request. Login and code endpoints are rate limited. The assistant can only read your own farm's data and cannot change, add or delete anything.
 

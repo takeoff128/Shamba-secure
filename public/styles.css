@@ -369,3 +369,9 @@ select.chip.on{background:var(--leaf-700);}
 @keyframes asstBlink{50%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.asst-fab .asst-orb::after,.asst-spark,.asst-spark2,.asst-thinking .asst-think-label,.asst-row.thinking .asst-orb{animation:none;}
   .asst-thinking .asst-think-label{color:var(--ink-soft);background:none;}}
+
+.asst-msg a{color:var(--leaf-700);font-weight:600;text-decoration:underline;}
+.asst-sources{margin-top:9px;padding-top:8px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:5px;}
+.asst-sources>span{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-soft);}
+.asst-sources a{display:flex;flex-direction:column;padding:6px 9px;border:1px solid var(--line);border-radius:9px;background:var(--paper);text-decoration:none;color:var(--leaf-700);font-size:12.5px;font-weight:700;line-height:1.3;}
+.asst-sources a small{font-weight:400;color:var(--ink-soft);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}

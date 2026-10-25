@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shamba-secure-shell-v5';
+const CACHE_NAME = 'shamba-secure-shell-v6';
 const SHELL_FILES = [
   '/',
   '/styles.css',
