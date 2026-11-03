@@ -308,3 +308,26 @@ A chat assistant sits bottom-right on every screen and in the menu. It answers h
 ## Languages
 
 The globe button (top right, also on the login screen) switches between English and Kiswahili. Translations live in `public/i18n.js` as exact-English-string dictionaries, applied automatically to everything the app renders. To add a language, add an entry to `LANGS` and a dictionary under `D`. Untranslated strings simply stay in English. The AI assistant replies in the chosen language; the offline guide answers in English. Reminder/SMS texts sent by the server are still English.
+
+## Getting SMS codes delivered on Safaricom
+
+Registration and password-reset codes are sent through Africa's Talking (AT). Safaricom only reliably delivers app traffic that comes from a **registered, transactional sender ID**.
+
+1. **Use a live AT account.** `AT_USERNAME=sandbox` only reaches the AT simulator, never real phones. Top up the account; with no balance every message fails.
+2. **Register a sender ID** (max 11 characters, no spaces; e.g. `SHAMBA-SEC`). "SHAMBASECURE" is 12 characters, which is too long. Declare it as **transactional (OTP)**. Through AT: fill in AT's draft sender ID letter, pay the one-off fee (KES 8,700 incl. VAT at the time of writing) to M-Pesa Paybill 525900, account ADMIN, and email it to info@africastalking.com. Have your business registration certificate ready; if the name is a product name rather than the registered business name, you may need trademark proof. Safaricom processes submissions on Mondays and Thursdays before noon (ready the next Tuesday/Friday); Airtel and Telkom take 7–14 working days.
+3. **When approved**, set `AT_SENDER_ID=SHAMBA-SEC` (exactly as approved) on the hosting service and redeploy.
+4. **Test from the server:** `node scripts/sms-test.js 07XXXXXXXX` prints exactly what the gateway said (e.g. InvalidSenderId, InsufficientBalance, UserInBlacklist).
+5. **Turn on delivery reports:** in the AT dashboard set the delivery-report callback URL to `https://YOUR-DOMAIN/api/sms/delivery-report` (add `?key=...` and set `SMS_CALLBACK_KEY` to the same value). Failed deliveries then show in the server log as `[sms:delivery] ... on Safaricom: Failed (reason)` and are stored in the `sms_log` table.
+6. **Switch phone verification on:** set `SMS_VERIFICATION=on`. The "Phone (SMS)" option on the sign-up form becomes available; until then sign-up uses email.
+
+Keep the code messages as they are in `server.js` (`SMS_TEMPLATES`): short, no links, no `%`, the same wording every time. Never put promotions in these messages; promotional SMS need a separate sender ID, opt-in consent, an opt-out, and daytime-only sending.
+
+## Password rules
+
+New passwords (sign-up, password reset, adding a team member) must be 8–128 characters with a capital letter, a small letter, a number and a symbol. `password-policy.js` also refuses:
+- common and leaked passwords, including disguised versions ("P@ssw0rd!", "Qwerty123!", "Kenya@2024", "Mahindi2024!");
+- keyboard runs and sequences ("Asdfgh1!", "Abcdefg1!");
+- passwords containing the person's name, phone number, email name or farm name;
+- passwords found in the Have I Been Pwned breach database. Only the first 5 characters of the password's SHA-1 hash are sent (k-anonymity); if the service is slow or down, this check is skipped so sign-up still works. Disable with `PASSWORD_BREACH_CHECK=off`.
+
+The sign-up form checks the password (`POST /api/password/check`) before sending the verification code. Existing passwords still work at login; the rules apply the next time a password is set.

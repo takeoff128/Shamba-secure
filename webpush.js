@@ -33,11 +33,13 @@ async function sendPushToUser(userId, payload) {
 // Sends to every user on a farm — used for reminders that apply to the
 // whole farm rather than one person.
 async function sendPushToFarm(farmId, payload) {
-  if (!configured) return;
+  if (!configured) return 0;
   const subs = db.prepare('SELECT * FROM push_subscriptions WHERE farm_id = ?').all(farmId);
+  let delivered = 0;
   for (const sub of subs) {
-    await deliverToSubscription(sub, payload);
+    if (await deliverToSubscription(sub, payload)) delivered++;
   }
+  return delivered;   // number of devices that accepted the notification
 }
 
 async function deliverToSubscription(sub, payload) {
@@ -47,6 +49,7 @@ async function deliverToSubscription(sub, payload) {
   };
   try {
     await webpush.sendNotification(pushSubscription, JSON.stringify(payload));
+    return true;
   } catch (err) {
     if (err.statusCode === 404 || err.statusCode === 410) {
       // Subscription is gone (browser data cleared, uninstalled, etc.) — clean it up.
@@ -54,6 +57,7 @@ async function deliverToSubscription(sub, payload) {
     } else {
       console.error('[push] failed to deliver:', err.message);
     }
+    return false;
   }
 }
 

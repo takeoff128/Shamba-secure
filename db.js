@@ -168,6 +168,24 @@ CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_subs_farm ON push_subscriptions(farm_id);
 `);
 
+// One row per SMS recipient, so failed deliveries are visible. Africa's Talking
+// fills in the final status later through the delivery-report callback.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sms_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id TEXT,
+    phone TEXT NOT NULL,
+    purpose TEXT,
+    status TEXT,
+    status_code INTEGER,
+    failure_reason TEXT,
+    network_code TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_sms_log_message ON sms_log(message_id);
+`);
+
 module.exports = db;
 
 // ---- Migrations for databases created before a column existed ----

@@ -169,7 +169,7 @@ document.getElementById('forgotBtn').addEventListener('click', async ()=>{
   const password = document.getElementById('forgotNewPassword').value;
   const confirm = document.getElementById('forgotConfirmPassword').value;
   if (!code){ err.textContent = 'Enter the code you were sent.'; return; }
-  if (!password || password.length < 6){ err.textContent = 'Password must be at least 6 characters.'; return; }
+  { const pe = pwRulesError(password); if (pe){ err.textContent = pe; return; } }
   if (password !== confirm){ err.textContent = "Passwords don't match."; return; }
   try{
     await api('/reset-password', { method:'POST', body:{ identifier, code, password } });
@@ -220,6 +220,49 @@ document.querySelectorAll('#regVerifySeg button').forEach(b=>{
   });
 });
 
+// Turn on the "Phone (SMS)" option once the server says SMS is set up
+// (SMS_VERIFICATION=on, after the sender ID is approved by the networks).
+fetch('/api/config', { credentials:'same-origin' }).then(r => r.ok ? r.json() : null).then(cfg => {
+  if (!cfg || !cfg.smsVerification) return;
+  const b = document.getElementById('regPhoneVerifyBtn');
+  if (b){ b.disabled = false; b.removeAttribute('title'); b.textContent = 'Phone (SMS)'; }
+  const n = document.getElementById('regVerifyNote');
+  if (n) n.textContent = "We'll send a 6-digit code to confirm the account is yours. The option you pick is also how you'll reset your password later.";
+}).catch(()=>{});
+
+// ---- Password rules (mirror of password-policy.js; the server has the final
+// say and also blocks leaked/common passwords) ----
+const PW_RULES = [
+  { key:'length', label:'At least 8 characters', test: p => p.length >= 8 },
+  { key:'case',   label:'Capital and small letters', test: p => /[a-z]/.test(p) && /[A-Z]/.test(p) },
+  { key:'number', label:'A number', test: p => /[0-9]/.test(p) },
+  { key:'symbol', label:'A symbol (! @ # ?)', test: p => /[^A-Za-z0-9]/.test(p) }
+];
+function pwRulesError(p){
+  const missing = PW_RULES.filter(r => !r.test(p || ''));
+  if (!missing.length) return '';
+  if (missing[0].key === 'length' && (p || '').length < 8) return 'Password must be at least 8 characters.';
+  return 'Password needs: ' + missing.map(r => r.label.toLowerCase()).join(', ') + '.';
+}
+function attachPwChecklist(inputId){
+  const inp = document.getElementById(inputId); if (!inp) return;
+  const box = document.createElement('div'); box.className = 'pw-rules'; box.id = inputId + 'Rules';
+  box.innerHTML = '<div class="pw-meter"><i></i></div><ul>' + PW_RULES.map(r => `<li data-k="${r.key}"><span class="pw-dot"></span><span>${r.label}</span></li>`).join('') + '</ul>';
+  const anchor = inp.closest('.pw-wrap') || inp;
+  anchor.parentNode.insertBefore(box, anchor.nextSibling);
+  const update = () => {
+    const p = inp.value; let n = 0;
+    PW_RULES.forEach(r => { const ok = r.test(p); if (ok) n++; box.querySelector(`li[data-k="${r.key}"]`).classList.toggle('ok', ok); });
+    const bonus = p.length >= 12 ? 1 : 0;
+    const level = !p ? 0 : Math.min(5, n + bonus);
+    box.dataset.level = level;
+    box.classList.toggle('show', !!p || document.activeElement === inp);
+  };
+  inp.addEventListener('input', update); inp.addEventListener('focus', update);
+  inp.addEventListener('blur', () => { if (!inp.value) box.classList.remove('show'); });
+  update();
+}
+
 function currentRegContact(){
   return regVerifyChannel === 'email'
     ? document.getElementById('regEmail').value.trim()
@@ -245,6 +288,7 @@ document.getElementById('regBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('regBtn');
   err.textContent = '';
   if (!farmName || !name || !phone || !email || !password){ err.textContent = 'Fill in every field.'; return; }
+  { const pe = pwRulesError(password); if (pe){ err.textContent = pe; document.getElementById('regPassword').focus(); return; } }
 
   const contact = currentRegContact();
   const sendingCode = !regCodeSent || regCodeSentFor !== contact;
@@ -254,6 +298,9 @@ document.getElementById('regBtn').addEventListener('click', async ()=>{
 
   if (sendingCode){
     try{
+      // Check the password (incl. leaked-password check) before sending a code.
+      const chk = await api('/password/check', { method:'POST', body:{ password, name, phone, email, farmName } });
+      if (chk && chk.ok === false){ err.textContent = chk.error; btn.textContent = originalLabel; btn.disabled = false; document.getElementById('regPassword').focus(); return; }
       await api('/register/send-code', { method:'POST', body:{ channel: regVerifyChannel, contact, farmName } });
       regCodeSent = true;
       regCodeSentFor = contact;
@@ -1429,6 +1476,7 @@ document.getElementById('addWorkerBtn').addEventListener('click', async ()=>{
   const email = document.getElementById('wEmail').value.trim();
   const password = document.getElementById('wPassword').value;
   if (!name || !phone || !password){ err.textContent = 'Fill in every field.'; return; }
+  { const pe = pwRulesError(password); if (pe){ err.textContent = pe; return; } }
   try{
     await api('/users', { method:'POST', body:{ name, phone, email: email || null, password } });
     document.getElementById('wName').value = '';
@@ -1814,7 +1862,7 @@ document.getElementById('saveDebtEditBtn').addEventListener('click', async ()=>{
 
 // ---- Login/register polish: show/hide password + mode-aware heading ----
 (function(){
-  ['loginPassword','regPassword','forgotNewPassword','forgotConfirmPassword'].forEach(id=>{
+  ['loginPassword','regPassword','forgotNewPassword','forgotConfirmPassword','wPassword'].forEach(id=>{
     const inp=document.getElementById(id); if(!inp) return;
     const wrap=document.createElement('div'); wrap.className='pw-wrap';
     inp.parentNode.insertBefore(wrap,inp); wrap.appendChild(inp);
@@ -1822,6 +1870,7 @@ document.getElementById('saveDebtEditBtn').addEventListener('click', async ()=>{
     b.addEventListener('click',()=>{const s=inp.type==='password'; inp.type=s?'text':'password'; b.textContent=s?'Hide':'Show';});
     wrap.appendChild(b);
   });
+  ['regPassword','forgotNewPassword','wPassword'].forEach(attachPwChecklist);
   const t=document.getElementById('authWelcome'), s=document.getElementById('authSub');
   const copy={login:['Welcome back','Log in to see how your farm is doing.'],
               register:['Start your farm','Set up your account in about a minute.']};

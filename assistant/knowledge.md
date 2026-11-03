@@ -6,12 +6,12 @@ Shamba Secure is a private farm-management app for small farms. It tracks money 
 The language button (globe with EN or SW) at the top right switches the whole app between English and Kiswahili; the choice is remembered on the device, and it is also on the login screen. Log out now lives at the bottom of the side menu. Tap the hamburger menu (three lines, top left) to open the side menu: Overview, Finance, Livestock, Poultry, Reminders, Team, History, Profile & farm settings, and Log out. Tapping the farm name or logo in the header also opens Profile & farm settings. The "Ask" assistant button sits at the bottom right of every screen.
 
 ## Getting started: registering and logging in
-On the login screen choose "Start a new farm". Enter the farm name, your name, currency, phone number, email, a password (at least 6 characters), and choose how to verify: Email (SMS verification may be temporarily unavailable). A 6-digit code is sent; enter it to create the account. The person who registers becomes the Owner. The verification choice also becomes the password-reset method.
+On the login screen choose "Start a new farm". Enter the farm name, your name, currency, phone number, email, a password (at least 8 characters with capital and small letters, a number and a symbol; common or leaked passwords such as "Password1!" or "Kenya@2024" and passwords containing your name, phone or farm name are refused), and choose how to verify: Email (SMS verification may be temporarily unavailable). A 6-digit code is sent; enter it to create the account. The person who registers becomes the Owner. The verification choice also becomes the password-reset method.
 To log in, use either the phone number or the email address plus the password. The Show/Hide button on the password field reveals what you typed.
 The other contact (the one you did not verify) can be verified later from the banner at the top of the app; the app stays usable meanwhile.
 
 ## Forgot password
-On the login screen tap "Forgot your password?", enter the phone number or email on the account, and a 6-digit code is sent to the contact that was verified at signup (email or SMS). Enter the code with a new password. Codes expire after 15 minutes. The message is the same whether or not the account exists, for privacy. If no code arrives: check spam, wait a minute and tap "Resend code", and make sure the email or SMS service is configured on the server (see Setup for the admin).
+On the login screen tap "Forgot your password?", enter the phone number or email on the account, and a 6-digit code is sent to the contact that was verified at signup (email or SMS). Enter the code with a new password (same rules as sign-up, and different from the old one). Codes expire after 15 minutes. The message is the same whether or not the account exists, for privacy. If no code arrives: check spam, wait a minute and tap "Resend code", and make sure the email or SMS service is configured on the server (see Setup for the admin).
 
 ## Roles and permissions
 Owner: can do everything, including deleting records, adding or editing team members, changing farm settings (name, currency, country, icon, logo), "Clear all" buttons, and sending reminders immediately.
@@ -79,7 +79,7 @@ Mortality % = birds lost / birds started. Average price per bird = lot income / 
 - Lot chart is empty: no transactions or debts are tagged to that lot; edit them and choose the Lot.
 - Can't delete something: deleting is owner only.
 - Notification switch is greyed out: blocked in device settings, unsupported browser, iPhone not installed to the Home Screen, or push not configured on the server.
-- Login code or reset code never arrives: the server's email/SMS provider may not be set up; the admin can check the server log for lines starting [email:not-configured] or [sms:not-configured].
+- Login code or reset code never arrives: the server's email/SMS provider may not be set up; the admin can check the server log for lines starting [email:not-configured], [sms:not-configured], [sms] ... rejected, or [sms:delivery]. SMS codes to Safaricom numbers need a registered transactional sender ID; until the admin turns SMS on, sign up with Email.
 - Page looks old after an update: close and reopen the app, or reload; installed apps can take a moment to refresh.
 - Session expired or "Your access has been removed": log in again; if removed, contact the farm owner.
 

@@ -56,7 +56,7 @@
         <label>Reset code</label>
         <input type="text" id="forgotCode" placeholder="6-digit code" maxlength="6">
         <label>New password</label>
-        <input type="password" id="forgotNewPassword" placeholder="At least 6 characters">
+        <input type="password" id="forgotNewPassword" placeholder="At least 8 characters" autocomplete="new-password">
         <label>Confirm new password</label>
         <input type="password" id="forgotConfirmPassword" placeholder="Type it again">
         <button type="button" class="link-btn" id="forgotResendBtn">Resend code</button>
@@ -79,13 +79,13 @@
       <label>Email address</label>
       <input type="email" id="regEmail" placeholder="you@example.com">
       <label>Password</label>
-      <input type="password" id="regPassword" placeholder="At least 6 characters">
+      <input type="password" id="regPassword" placeholder="At least 8 characters" autocomplete="new-password">
       <label>Verify via</label>
       <div class="seg" id="regVerifySeg">
         <button type="button" class="on" data-val="email">Email</button>
-        <button type="button" data-val="phone" disabled title="SMS verification is temporarily unavailable">Phone (SMS) &mdash; unavailable</button>
+        <button type="button" data-val="phone" id="regPhoneVerifyBtn" disabled title="SMS verification is temporarily unavailable">Phone (SMS) &mdash; unavailable</button>
       </div>
-      <p class="note">We'll email you a code now to confirm the account is yours, and this becomes how you'll reset your password later. SMS verification is temporarily unavailable &mdash; you can still verify your phone afterward from the app once that's back.</p>
+      <p class="note" id="regVerifyNote">We'll email you a code now to confirm the account is yours, and this becomes how you'll reset your password later. SMS verification is temporarily unavailable &mdash; you can still verify your phone afterward from the app once that's back.</p>
       <div id="regCodeStep" style="display:none">
         <p class="note" id="regCodeNote"></p>
         <label>Verification code</label>
@@ -461,7 +461,7 @@
         <label>Email (optional)</label>
         <input type="email" id="wEmail">
         <label>Password</label>
-        <input type="password" id="wPassword" placeholder="At least 6 characters">
+        <input type="password" id="wPassword" placeholder="At least 8 characters" autocomplete="new-password">
         <div class="err" id="wErr"></div>
         <button class="btn" id="addWorkerBtn">Add to farm</button>
       </div>

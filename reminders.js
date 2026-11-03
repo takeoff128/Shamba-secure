@@ -25,15 +25,81 @@ function normalizePhone(phone) {
   return '+' + digits;
 }
 
-async function sendSms(phones, message) {
+// Africa's Talking per-recipient status codes (sending API response).
+// 100 Processed, 101 Sent, 102 Queued are fine; everything else failed.
+const AT_OK_CODES = new Set([100, 101, 102]);
+const AT_FAILURE_HINTS = {
+  401: "RiskHold: Africa's Talking is reviewing the account. Contact their support.",
+  402: 'InvalidSenderId: AT_SENDER_ID is not approved or not mapped to this account. Remove AT_SENDER_ID or finish the sender ID registration.',
+  403: 'InvalidPhoneNumber: check the number (07XX/01XX or +254...).',
+  404: 'UnsupportedNumberType.',
+  405: "InsufficientBalance: top up the Africa's Talking account.",
+  406: 'UserInBlacklist: this subscriber has blocked messages from this sender (for example Safaricom promotional/DND blocking). Use a registered transactional sender ID.',
+  407: 'CouldNotRoute: the network could not route the message.',
+  409: 'DoNotDisturbRejection: the subscriber is on Do-Not-Disturb for this sender. Use a registered transactional sender ID.',
+  500: 'InternalServerError at the gateway: try again.',
+  501: 'GatewayError: try again.',
+  502: 'RejectedByGateway: the sender ID is not mapped to this account.'
+};
+// Kenyan mobile network codes reported in delivery reports.
+const NETWORKS = { '63902': 'Safaricom', '63903': 'Airtel', '63907': 'Telkom', '63910': 'Faiba' };
+
+if (AT_USERNAME === 'sandbox') {
+  console.log("[sms] AT_USERNAME=sandbox: messages only appear in the Africa's Talking simulator, never on real phones.");
+}
+
+function logSms(row) {
+  try {
+    db.prepare('INSERT INTO sms_log (message_id, phone, purpose, status, status_code, failure_reason) VALUES (?,?,?,?,?,?)')
+      .run(row.messageId || null, row.phone, row.purpose || null, row.status || null, row.statusCode || null, row.failureReason || null);
+  } catch (e) { /* logging must never break sending */ }
+}
+
+// Sends one message to one or more phones. Resolves with { sent, failed }
+// when at least one recipient was accepted; throws (with a readable reason)
+// when every recipient was rejected, so callers can tell the user.
+async function sendSms(phones, message, purpose = 'reminder') {
   const recipients = phones.map(normalizePhone);
   if (!sms) {
     console.log(`[sms:not-configured] to=${recipients.join(',')} message="${message}"`);
-    return { simulated: true, recipients, message };
+    return { simulated: true, recipients, message, sent: recipients, failed: [] };
   }
   const opts = { to: recipients, message };
   if (process.env.AT_SENDER_ID) opts.from = process.env.AT_SENDER_ID;
-  return sms.send(opts);
+  const resp = await sms.send(opts);
+  const list = (resp && resp.SMSMessageData && Array.isArray(resp.SMSMessageData.Recipients)) ? resp.SMSMessageData.Recipients : [];
+  const sent = [], failed = [];
+  list.forEach(r => {
+    const code = Number(r.statusCode);
+    const ok = AT_OK_CODES.has(code);
+    const reason = ok ? null : (AT_FAILURE_HINTS[code] || r.status || 'Unknown failure');
+    logSms({ messageId: r.messageId, phone: r.number, purpose, status: r.status, statusCode: code, failureReason: reason });
+    if (ok) sent.push(r.number);
+    else { failed.push({ number: r.number, reason }); console.error(`[sms] ${purpose} to ${r.number} rejected (${code} ${r.status}): ${reason}`); }
+  });
+  if (!list.length) {
+    const why = (resp && resp.SMSMessageData && resp.SMSMessageData.Message) || 'No recipients accepted';
+    console.error(`[sms] ${purpose} not sent: ${why}`);
+    throw new Error(why);
+  }
+  if (!sent.length) throw new Error(failed[0].reason);
+  return { sent, failed };
+}
+
+// Delivery report from Africa's Talking (configure the callback URL in the
+// AT dashboard: SMS > Callback URLs > Delivery Reports).
+function recordDeliveryReport(body) {
+  const id = body && String(body.id || '');
+  if (!id) return false;
+  const status = String(body.status || '').slice(0, 40);
+  const reason = body.failureReason ? String(body.failureReason).slice(0, 80) : null;
+  const network = body.networkCode ? String(body.networkCode).slice(0, 10) : null;
+  const res = db.prepare("UPDATE sms_log SET status = ?, failure_reason = COALESCE(?, failure_reason), network_code = ?, updated_at = datetime('now') WHERE message_id = ?")
+    .run(status, reason, network, id);
+  if (status && status !== 'Success' && status !== 'Sent' && status !== 'Submitted' && status !== 'Buffered') {
+    console.error(`[sms:delivery] ${id} to ${body.phoneNumber || '?'} on ${NETWORKS[network] || network || 'unknown network'}: ${status}${reason ? ' (' + reason + ')' : ''}`);
+  }
+  return res.changes > 0;
 }
 
 // Sends one reminder — to the debtor directly if it's a debt someone owes
@@ -52,7 +118,7 @@ async function deliverReminder(reminder) {
     if (debt && debt.direction === 'owed_to_me' && debt.phone) {
       // The debtor isn't a user of the app, so this is SMS-only — no push subscription exists for them.
       try {
-        await sendSms([debt.phone], reminder.message);
+        await sendSms([debt.phone], reminder.message, 'debtor-reminder');
         db.prepare("UPDATE reminders SET sent_at = datetime('now') WHERE id = ?").run(reminder.id);
       } catch (err) {
         console.error(`[sms] failed to send debtor reminder ${reminder.id}:`, err.message);
@@ -64,16 +130,13 @@ async function deliverReminder(reminder) {
   const users = db.prepare('SELECT phone FROM users WHERE farm_id = ?').all(reminder.farm_id);
   const phones = users.map(u => u.phone);
   if (phones.length === 0) return;
-  try {
-    await sendSms(phones, reminder.message);
-    await sendPushToFarm(reminder.farm_id, {
-      title: 'Shamba Secure reminder',
-      body: reminder.message
-    });
-    db.prepare("UPDATE reminders SET sent_at = datetime('now') WHERE id = ?").run(reminder.id);
-  } catch (err) {
-    console.error(`[sms] failed to send reminder ${reminder.id}:`, err.message);
-  }
+  // SMS and push are independent: a failed SMS must not stop the push alert.
+  let delivered = false;
+  try { await sendSms(phones, reminder.message, 'reminder'); delivered = true; }
+  catch (err) { console.error(`[sms] failed to send reminder ${reminder.id}:`, err.message); }
+  try { if (await sendPushToFarm(reminder.farm_id, { title: 'Shamba Secure reminder', body: reminder.message }) > 0) delivered = true; }
+  catch (err) { console.error(`[push] failed to send reminder ${reminder.id}:`, err.message); }
+  if (delivered) db.prepare("UPDATE reminders SET sent_at = datetime('now') WHERE id = ?").run(reminder.id);
 }
 
 async function runDueReminders() {
@@ -108,4 +171,4 @@ function createDebtReminder(debt, userId) {
   ).run(debt.farm_id, userId, 'debt', debt.id, debt.due_date, message);
 }
 
-module.exports = { sendSms, normalizePhone, runDueReminders, createDebtReminder };
+module.exports = { sendSms, normalizePhone, runDueReminders, createDebtReminder, recordDeliveryReport };

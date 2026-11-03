@@ -6,7 +6,18 @@ const crypto = require('crypto');
 const path = require('path');
 const db = require('./db');
 const { setAuthCookie, clearAuthCookie, requireAuth, requireOwner } = require('./auth');
-const { runDueReminders, createDebtReminder, sendSms } = require('./reminders');
+const { runDueReminders, createDebtReminder, sendSms, recordDeliveryReport } = require('./reminders');
+const { passwordProblem } = require('./password-policy');
+
+// Fixed SMS wording. Safaricom approves sender IDs per use case and may check
+// that live traffic matches the declared (transactional OTP) template, so keep
+// these stable, short, free of links and of the % sign.
+const SMS_TEMPLATES = {
+  verify: code => `Shamba Secure: your verification code is ${code}. It expires in 15 minutes. Do not share this code.`,
+  reset: code => `Shamba Secure: your password reset code is ${code}. It expires in 15 minutes. If you did not ask for it, ignore this message.`
+};
+// Phone (SMS) verification at sign-up is off until a sender ID is approved.
+const smsVerificationOn = () => (process.env.SMS_VERIFICATION || '').toLowerCase() === 'on';
 const { BROILER_SCHEDULE, SCHEDULES, getSchedule, createLotReminders } = require('./broiler');
 const { CURRENCIES } = require('./currency');
 const { sendPasswordResetCodeEmail, sendVerificationCodeEmail } = require('./email');
@@ -79,9 +90,8 @@ async function issuePhoneVerificationCode(userId, phone, farmName) {
   const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
   db.prepare('UPDATE users SET phone_verification_code = ?, phone_verification_code_expires = ? WHERE id = ?')
     .run(code, expires, userId);
-  const message = `Your Shamba Secure verification code${farmName ? ` for ${farmName}` : ''} is ${code}. It expires in 15 minutes.`;
   try {
-    await sendSms([phone], message);
+    await sendSms([phone], SMS_TEMPLATES.verify(code), 'verify-phone');
   } catch (err) {
     console.error('[sms] failed to send phone verification code:', err.message);
   }
@@ -96,6 +106,7 @@ async function issuePhoneVerificationCode(userId, phone, farmName) {
 app.post('/api/register/send-code', codeRequestLimiter, async (req, res) => {
   const { channel, contact, farmName } = req.body || {};
   if (!['email', 'phone'].includes(channel)) return badRequest(res, 'Invalid verification channel.');
+  if (channel === 'phone' && !smsVerificationOn()) return badRequest(res, 'SMS verification is not available yet. Choose Email.');
   if (!contact) return badRequest(res, channel === 'email' ? 'Enter your email address.' : 'Enter your phone number.');
   if (channel === 'email' && !/^\S+@\S+\.\S+$/.test(contact)) return badRequest(res, 'Enter a valid email address.');
 
@@ -115,11 +126,13 @@ app.post('/api/register/send-code', codeRequestLimiter, async (req, res) => {
     if (channel === 'email') {
       await sendVerificationCodeEmail(contact, code, farmName || null);
     } else {
-      await sendSms([contact], `Your Shamba Secure verification code${farmName ? ` for ${farmName}` : ''} is ${code}. It expires in 15 minutes.`);
+      await sendSms([contact], SMS_TEMPLATES.verify(code), 'register-otp');
     }
   } catch (err) {
     console.error(`[${channel}] failed to send pre-registration verification code:`, err.message);
-    return res.status(500).json({ error: `Could not send the verification ${channel === 'email' ? 'email' : 'text'}. Try again in a moment.` });
+    return res.status(500).json({ error: channel === 'email'
+      ? 'Could not send the verification email. Try again in a moment.'
+      : 'Could not send the text message to that number. Check the number, or choose Email to verify instead.' });
   }
 
   res.json({ ok: true });
@@ -128,8 +141,8 @@ app.post('/api/register/send-code', codeRequestLimiter, async (req, res) => {
 app.post('/api/register', registerLimiter, async (req, res) => {
   const { farmName, name, phone, email, password, currency, country, code, verify_channel } = req.body || {};
   if (!farmName || !name || !phone || !email || !password) return badRequest(res, 'All fields are required.');
-  if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
   if (!/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email address.');
+  { const pwErr = await passwordProblem(password, { name, phone, email, farmName }); if (pwErr) return badRequest(res, pwErr); }
   if (!['email', 'phone'].includes(verify_channel)) return badRequest(res, 'Choose how to verify your account.');
   if (!code) return badRequest(res, 'Enter the verification code you were sent.');
 
@@ -181,8 +194,12 @@ app.post('/api/register', registerLimiter, async (req, res) => {
 app.post('/api/users', requireAuth, requireOwner, async (req, res) => {
   const { name, phone, email, password } = req.body || {};
   if (!name || !phone || !password) return badRequest(res, 'Name, phone, and password are required.');
-  if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
   if (email && !/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email address.');
+  {
+    const farm = db.prepare('SELECT name FROM farms WHERE id = ?').get(req.user.farmId);
+    const pwErr = await passwordProblem(password, { name, phone, email, farmName: farm && farm.name });
+    if (pwErr) return badRequest(res, pwErr);
+  }
 
   const existingPhone = db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
   if (existingPhone) return badRequest(res, 'That phone number is already registered.');
@@ -298,6 +315,36 @@ app.patch('/api/me', requireAuth, (req, res) => {
   res.json({ ok: true, name: trimmed });
 });
 
+// Checks a proposed password against the rules (including the breach check)
+// before sign-up sends a verification code, so people fix it first. The
+// password is not stored or logged.
+const passwordCheckLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 30,
+  keyFn: req => `pw-check:${req.ip}`,
+  message: 'Too many attempts. Please wait a few minutes and try again.'
+});
+app.post('/api/password/check', passwordCheckLimiter, async (req, res) => {
+  const { password, name, phone, email, farmName } = req.body || {};
+  if (typeof password !== 'string' || !password) return badRequest(res, 'Enter a password.');
+  const problem = await passwordProblem(password, { name, phone, email, farmName });
+  if (problem) return res.json({ ok: false, error: problem });
+  res.json({ ok: true });
+});
+
+// Public, non-secret settings the login/register screen needs.
+app.get('/api/config', (req, res) => {
+  res.json({ smsVerification: smsVerificationOn() });
+});
+
+// Africa's Talking delivery reports (form-encoded POST). Set this URL in the
+// AT dashboard; add ?key=SMS_CALLBACK_KEY if that variable is set.
+app.post('/api/sms/delivery-report', express.urlencoded({ extended: false, limit: '10kb' }), (req, res) => {
+  const key = process.env.SMS_CALLBACK_KEY;
+  if (key && req.query.key !== key) return res.status(403).end();
+  try { recordDeliveryReport(req.body || {}); } catch (e) { console.error('[sms:delivery] could not record report:', e.message); }
+  res.status(200).end();
+});
+
 app.get('/api/currencies', (req, res) => {
   res.json(CURRENCIES);
 });
@@ -368,7 +415,7 @@ app.post('/api/forgot-password', codeRequestLimiter, async (req, res) => {
 
   try {
     if (user.reset_channel === 'phone') {
-      await sendSms([user.phone], `Your Shamba Secure password reset code is ${code}. It expires in 15 minutes. If you didn't request this, ignore this text.`);
+      await sendSms([user.phone], SMS_TEMPLATES.reset(code), 'password-reset');
     } else {
       await sendPasswordResetCodeEmail(user.email, code, farm ? farm.name : null);
     }
@@ -380,14 +427,20 @@ app.post('/api/forgot-password', codeRequestLimiter, async (req, res) => {
   res.json(genericResponse);
 });
 
-app.post('/api/reset-password', codeVerifyLimiter, (req, res) => {
+app.post('/api/reset-password', codeVerifyLimiter, async (req, res) => {
   const { identifier, code, password } = req.body || {};
   if (!identifier || !code || !password) return badRequest(res, 'Missing your phone/email, code, or new password.');
-  if (password.length < 6) return badRequest(res, 'Password must be at least 6 characters.');
 
   const user = db.prepare('SELECT * FROM users WHERE (email = ? OR phone = ?) AND reset_token = ?').get(identifier, identifier, code);
   if (!user || !user.reset_token_expires || new Date(user.reset_token_expires) < new Date()) {
     return res.status(400).json({ error: 'That code is invalid or has expired. Request a new one.' });
+  }
+  // Password rules are checked after the code, so they reveal nothing about accounts.
+  const farm = db.prepare('SELECT name FROM farms WHERE id = ?').get(user.farm_id);
+  const pwErr = await passwordProblem(password, { name: user.name, phone: user.phone, email: user.email, farmName: farm && farm.name });
+  if (pwErr) return badRequest(res, pwErr);
+  if (user.password_hash && bcrypt.compareSync(password, user.password_hash)) {
+    return badRequest(res, 'Choose a new password that is different from your old one.');
   }
 
   const hash = bcrypt.hashSync(password, 12);
