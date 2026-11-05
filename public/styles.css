@@ -20,6 +20,8 @@
 }
 *{box-sizing:border-box;}
 html,body{overflow-x:hidden;max-width:100%;}
+/* clip (not hidden) keeps the page from side-scrolling without breaking position:sticky */
+@supports (overflow:clip){html,body{overflow-x:clip;}}
 body{
   margin:0;
   font-family:'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -140,6 +142,8 @@ header.top .tagline{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   overflow-y:auto;
 }
 .drawer.open{transform:translateX(0);}
+/* closed drawer: no shadow leaking onto the left edge of the screen */
+.drawer:not(.open){box-shadow:none;visibility:hidden;transition:transform .2s ease,visibility 0s linear .2s;}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:14px;}
 .drawer-head .brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1;}
 .drawer-head h1{font-size:16px;}
@@ -393,3 +397,14 @@ select.chip.on{background:var(--leaf-700);}
 .pw-rules li.ok .pw-dot{background:#3f7a35;border-color:#3f7a35;}
 .pw-rules li.ok .pw-dot::after{content:"";position:absolute;left:4px;top:1px;width:3px;height:7px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);}
 @media (max-width:360px){.pw-rules ul{grid-template-columns:1fr;}}
+
+/* ---- Sticky top bar + Overview lot chips ---- */
+header.top{position:sticky;top:0;z-index:40;transition:padding .2s ease;}
+header.top::before{content:"";position:absolute;top:0;bottom:0;left:-100vmax;right:-100vmax;background:var(--paper);z-index:-1;transition:box-shadow .2s ease;}
+header.top.scrolled{padding-top:calc(8px + env(safe-area-inset-top));padding-bottom:9px;}
+header.top.scrolled::before{box-shadow:0 6px 16px -10px rgba(40,30,10,.45);}
+header.top.scrolled .tagline{display:none;}
+header.top.scrolled .mark.small{width:32px;height:32px;}
+.scope-bar{position:sticky;top:var(--hdr-h,72px);z-index:30;margin:0 0 12px;padding:8px 0 4px;}
+.scope-bar::before{content:"";position:absolute;top:0;bottom:0;left:-100vmax;right:-100vmax;background:var(--paper);z-index:-1;}
+.scope-bar.stuck::before{box-shadow:0 6px 14px -10px rgba(40,30,10,.4);}

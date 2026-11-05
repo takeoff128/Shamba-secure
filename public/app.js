@@ -2319,3 +2319,27 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
   closeAsst();
 });
 asstLoad();
+
+
+// ---- Sticky header: shrink it once the page scrolls, and tell the
+// Overview lot chips how tall it is so they stick right underneath. ----
+(function(){
+  const header = document.querySelector('header.top');
+  if (!header) return;
+  const setH = () => document.documentElement.style.setProperty('--hdr-h', header.offsetHeight + 'px');
+  let ticking = false;
+  const onScroll = () => {
+    if (ticking) return; ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      header.classList.toggle('scrolled', window.scrollY > 8);
+      const bar = document.querySelector('.view.active .scope-bar');
+      if (bar) bar.classList.toggle('stuck', bar.getBoundingClientRect().top <= header.offsetHeight + 1 && window.scrollY > 8);
+    });
+  };
+  // border-box: the header shrinks by padding, which a content-box observer would miss
+  if ('ResizeObserver' in window) new ResizeObserver(setH).observe(header, { box: 'border-box' }); else window.addEventListener('resize', setH);
+  header.addEventListener('transitionend', setH);
+  window.addEventListener('scroll', onScroll, { passive: true });
+  setH(); onScroll();
+})();
